@@ -2,8 +2,9 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
+import axios from 'axios';
 
-const ThreeDViewer = ({ fileName }) => {
+const ThreeDViewer = ({ fileName, token }) => {
   const mountRef = useRef(null); // Ref to attach the renderer
 
   useEffect(() => {
@@ -25,10 +26,15 @@ const ThreeDViewer = ({ fileName }) => {
     controls.rotateSpeed = 0.5;
 
     // Load 3D model
-    const loader = new STLLoader();
-    loader.load(
-        `http://localhost:8000/get_3d_dicom/${fileName}`,
-        (geometry) => {
+    const loadModel = () => {
+        axios.get(`http://localhost:8000/get_3d_dicom/${fileName}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+            },
+            responseType: 'arraybuffer',  // Receive binary data
+        })
+        .then(response => {
+            const geometry = new STLLoader().parse(response.data);
             console.log("STL file loaded successfully:", geometry);
             geometry.center(); // Centers the geometry
             geometry.computeBoundingBox();
@@ -43,14 +49,13 @@ const ThreeDViewer = ({ fileName }) => {
             const material = new THREE.MeshStandardMaterial({ color: 0x00ff00, metalness: 0.3, roughness: 0.6 });
             const mesh = new THREE.Mesh(geometry, material);
             scene.add(mesh);
-        },
-        (xhr) => {
-          console.log(`Loading STL: ${((xhr.loaded / xhr.total) * 100).toFixed(2)}% loaded`);
-        },
-        (error) => {
-          console.error("Error loading STL:", error);
-        }
-    );
+        })
+        .catch(error => {
+            console.error("Error loading STL:", error);
+        });
+    };
+
+    loadModel();
 
     // Lighting
     const light = new THREE.AmbientLight(0xffffff, 0.5);

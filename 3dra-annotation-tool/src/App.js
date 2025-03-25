@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
-import { VtkRenderer } from './components/VtkRenderer';
 import { AnnotationPanel } from './components/AnnotationPanel';
-import { DICOMViewer } from "./components/DICOMViewer";
 import ThreeDViewer from './components/ThreeDViewer';
 
-function App() {
+function App({ token }) {
   const [dicomFiles, setDicomFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [rao, setRao] = useState(null);
@@ -14,20 +12,30 @@ function App() {
   const [viewVector, setViewVector] = useState(null);
 
   useEffect(() => {
-    axios.get('http://127.0.0.1:8000/dicom-files')
-      .then(response => {
-        setDicomFiles(response.data.files);
+    if (token) {
+      // Fetch the DICOM files once the token is available
+      axios.get('http://127.0.0.1:8000/dicom-files', {
+        headers: {
+          'Authorization': `Bearer ${token}`,  // Send token in the Authorization header
+        }
       })
-      .catch(error => console.log(error));
-  }, []);
+        .then(response => {
+          setDicomFiles(response.data.files);
+        })
+        .catch(error => console.log(error));
+    }
+  }, [token]);
 
   const handleFileSelection = (fileName) => {
     setSelectedFile(fileName);
 
     // Fetch angles and view vector data from FastAPI
-    axios.get(`http://127.0.0.1:8000/annotations/${fileName}`)
+    axios.get(`http://127.0.0.1:8000/annotations/${fileName}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,  // Send token in the Authorization header
+      }
+    })
       .then(response => {
-        // You can set the RAO, CRAN, view vector here from response if available
         const annotations = response.data.annotations[0] || {};
         setRao(annotations.rao || 'N/A');
         setCran(annotations.cran || 'N/A');
@@ -48,7 +56,7 @@ function App() {
         </ul>
       </div>
       <div className="middle-pane">
-        {selectedFile && <ThreeDViewer fileName={selectedFile} />}
+        {selectedFile && <ThreeDViewer fileName={selectedFile} token={token} />}
       </div>
       <div className="right-pane">
         <h2>Current working projection</h2>

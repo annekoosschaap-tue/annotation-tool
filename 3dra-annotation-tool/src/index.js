@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
@@ -18,9 +18,8 @@ const RootComponent = () => {
     }
   };
 
-  // Prompt for token when the app starts
-  React.useEffect(() => {
-    handleTokenInput();
+  useEffect(() => {
+    handleTokenInput();  // Request token on initial load
   }, []);
 
   return token ? <App token={token} /> : <div>Loading...</div>;
