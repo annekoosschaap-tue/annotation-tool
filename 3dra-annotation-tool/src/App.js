@@ -65,7 +65,7 @@ function App({ token }) {
             <p><strong>RAO:</strong> {rao}</p>
             <p><strong>CRAN:</strong> {cran}</p>
             <p><strong>View Vector:</strong> {viewVector}</p>
-            <AnnotationPanel fileName={selectedFile} />
+            <AnnotationPanel fileName={selectedFile} token={token} />
           </div>
         )}
       </div>

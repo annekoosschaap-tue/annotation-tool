@@ -1,7 +1,7 @@
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
 import json
 import pydicom
@@ -19,14 +19,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+# Use HTTPBearer instead of OAuth2PasswordBearer
+security = HTTPBearer()
 
-# Path to the DICOM files directory
 DICOM_DIR = r"C:\Users\s149220\Documents\PhD\PhD\Datasets\Aneurisk\C0001_dicom\C0001"
 
-def verify_token(token: str = Depends(oauth2_scheme)):
-    # TODO: Implement token check with Philips CFI Lab
-    if token != "test":
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials  # Extract the token from the Authorization header
+    if token != "test":  # Replace with actual token verification logic
         raise HTTPException(status_code=401, detail="Invalid token")
     return token
 
@@ -103,5 +103,8 @@ def get_annotations(file_name: str, token: str = Depends(verify_token)):
     if os.path.exists("annotations.json"):
         with open("annotations.json", "r") as f:
             annotations = json.load(f)
+        print(annotations)
+        print(file_name)
+        print(annotations.get(file_name, []))
         return {"annotations": annotations.get(file_name, [])}
     return {"annotations": []}
