@@ -1,15 +1,20 @@
 import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
+import { arrayMax, arrayMin, arrayRange} from '@kitware/vtk.js/Common/Core/Math'
+import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
+import vtkColorTransferFunction from '@kitware/vtk.js/Rendering/Core/ColorTransferFunction';
+import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
 import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
 import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData';
-import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
+import vtkImageMapper from '@kitware/vtk.js/Rendering/Core/ImageMapper';
+import vtkImageMarchingCubes from '@kitware/vtk.js/Filters/General/ImageMarchingCubes';
+import vtkImageSlice from '@kitware/vtk.js/Rendering/Core/ImageSlice';
+import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
+import vtkPiecewiseFunction from '@kitware/vtk.js/Common/DataModel/PiecewiseFunction';
 import vtkVolume from '@kitware/vtk.js/Rendering/Core/Volume';
 import vtkVolumeMapper from '@kitware/vtk.js/Rendering/Core/VolumeMapper';
 import vtkVolumeProperty from '@kitware/vtk.js/Rendering/Core/VolumeProperty';
-import vtkPiecewiseFunction from '@kitware/vtk.js/Common/DataModel/PiecewiseFunction';
-import vtkColorTransferFunction from '@kitware/vtk.js/Rendering/Core/ColorTransferFunction';
-import { arrayMax, arrayMin, arrayRange} from '@kitware/vtk.js/Common/Core/Math'
 
 async function fetchData(fileName, token) {
   try {
@@ -90,28 +95,16 @@ function App() {
       
       const { pixel_array, shape } = loadedData;
       const imageData = createVTKImageData(pixel_array, shape);
-      
-      const mapper = vtkVolumeMapper.newInstance();
-      mapper.setInputData(imageData);
-      
-      const volumeProperty = vtkVolumeProperty.newInstance();
 
-      const ctfun = vtkColorTransferFunction.newInstance();
-      ctfun.addRGBPoint(20.0, 0.0, 0.0, 0.0);
-      ctfun.addRGBPoint(230.0, 1.0, 1.0, 1.0);
+      const imageActor = vtkImageSlice.newInstance();
 
-      const ofun = vtkPiecewiseFunction.newInstance();
-      ofun.addPoint(20.0, 0.0);
-      ofun.addPoint(130.0, 0.5);
-      ofun.addPoint(230.0, 1.0);
+      renderer.addActor(imageActor);
+
+      const imageMapper = vtkImageMapper.newInstance();
+      imageMapper.setInputData(imageData);
+      imageMapper.setISlice(30);
+      imageActor.setMapper(imageMapper);
       
-      const volume = vtkVolume.newInstance();
-      volume.setMapper(mapper);
-      volume.getProperty().setRGBTransferFunction(0, ctfun);
-      volume.getProperty().setScalarOpacity(0, ofun);
-      volume.setProperty(volumeProperty);
-      
-      renderer.addVolume(volume);
       renderer.resetCamera();
       renderWindow.render();
     }

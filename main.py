@@ -1,7 +1,8 @@
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import base64
 import os
 import json
 import pydicom
@@ -46,29 +47,62 @@ def get_dicom_files(token: str = Depends(verify_token)):
 
 @app.get("/get_3d_dicom/{file_name}")
 async def get_3d_dicom(file_name: str, token: str = Depends(verify_token)):
+    """Retrieve the 3D STL file for a DICOM scan."""
     dicom_path = os.path.join(DICOM_DIR, file_name)
+
     try:
         ds = pydicom.dcmread(dicom_path)
 
         if not hasattr(ds, "pixel_array"):
-            return {"error": "DICOM file does not contain pixel data."}
+            raise HTTPException(status_code=400, detail="DICOM file does not contain pixel data.")
 
         pixel_array = ds.pixel_array
-    
+
+        # Process the 3D data using PyVista
         volume = pv.wrap(pixel_array)
         threshold = np.percentile(pixel_array, 99.5)
         thresholded_volume = volume.threshold(threshold)
-        print(threshold)
         surface = thresholded_volume.extract_geometry()
 
+        # Save STL file
         folder = "tmp"
         os.makedirs(folder, exist_ok=True)
-        stl_file = os.path.join(folder, "output_model.stl")
-
+        stl_file = os.path.join(folder, f"output_model.stl")
         surface.save(stl_file)
-        return FileResponse(stl_file)
+
+        # Debug: Check if STL file is created
+        if not os.path.exists(stl_file) or os.path.getsize(stl_file) == 0:
+            raise HTTPException(status_code=500, detail="Generated STL file is empty.")
+
+        print(f"Serving STL file: {stl_file}")
+
+        return FileResponse(stl_file, media_type="application/octet-stream", filename=f"output_model.stl")
+
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/get_3d_array/{file_name}")
+async def get_3d_array(file_name: str, token: str = Depends(verify_token)):
+    """Retrieve and send the 3D pixel array data for a DICOM scan."""
+    dicom_path = os.path.join(DICOM_DIR, file_name)
+
+    try:
+        ds = pydicom.dcmread(dicom_path)
+
+        if not hasattr(ds, "pixel_array"):
+            raise HTTPException(status_code=400, detail="DICOM file does not contain pixel data.")
+
+        pixel_array = ds.pixel_array
+
+        # Encode the processed pixel array to base64 to send to the frontend
+        encoded_pixel_array = base64.b64encode(pixel_array.tobytes()).decode("utf-8")
+
+        return JSONResponse(content={"pixel_array": encoded_pixel_array, "shape": list(pixel_array.shape)})
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/save-annotation")
 def save_annotation(data: dict, token: str = Depends(verify_token)):
