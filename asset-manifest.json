@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/annotation-tool/static/css/main.e6c13ad2.css",
-    "main.js": "/annotation-tool/static/js/main.96d8d75a.js",
+    "main.js": "/annotation-tool/static/js/main.faf6aec5.js",
     "static/js/453.e01c99c2.chunk.js": "/annotation-tool/static/js/453.e01c99c2.chunk.js",
     "index.html": "/annotation-tool/index.html",
     "main.e6c13ad2.css.map": "/annotation-tool/static/css/main.e6c13ad2.css.map",
-    "main.96d8d75a.js.map": "/annotation-tool/static/js/main.96d8d75a.js.map",
+    "main.faf6aec5.js.map": "/annotation-tool/static/js/main.faf6aec5.js.map",
     "453.e01c99c2.chunk.js.map": "/annotation-tool/static/js/453.e01c99c2.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.e6c13ad2.css",
-    "static/js/main.96d8d75a.js"
+    "static/js/main.faf6aec5.js"
   ]
 }
