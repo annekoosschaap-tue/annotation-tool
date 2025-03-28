@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
 import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
@@ -7,10 +7,7 @@ import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
 import vtkVolume from '@kitware/vtk.js/Rendering/Core/Volume';
 import vtkVolumeMapper from '@kitware/vtk.js/Rendering/Core/VolumeMapper';
 import vtkVolumeProperty from '@kitware/vtk.js/Rendering/Core/VolumeProperty';
-import vtkPiecewiseFunction from '@kitware/vtk.js/Common/DataModel/PiecewiseFunction';
 import vtkVolumeController from '@kitware/vtk.js/Interaction/UI/VolumeController';
-import vtkColorTransferFunction from '@kitware/vtk.js/Rendering/Core/ColorTransferFunction';
-import { arrayMax, arrayMin, arrayRange} from '@kitware/vtk.js/Common/Core/Math'
 
 async function fetchData(fileName, token) {
   try {
@@ -22,6 +19,7 @@ async function fetchData(fileName, token) {
     return response.data;
   } catch (error) {
     console.error("Error fetching 3D data:", error);
+    return null;
   }
 }
 
@@ -39,17 +37,13 @@ function createVTKImageData(imageArray, shape) {
     name: 'Scalars',
   });
 
-  console.log(decodedData);
-  console.log(arrayMax(decodedData));
-  console.log(arrayMin(decodedData));
-  console.log(arrayRange(decodedData));
-
   imageData.getPointData().setScalars(scalars);
   return imageData;
 }
 
 function App() {
   const vtkContainerRef = useRef(null);
+  const controllerContainerRef = useRef(null);
   const context = useRef(null);
   const [loadedData, setLoadedData] = useState(null);
 
@@ -88,7 +82,6 @@ function App() {
   useEffect(() => {
     if (loadedData && context.current) {
       const { renderer, renderWindow } = context.current;
-      const rootContainer = context.current.fullScreenRenderer.getContainer();
 
       const { pixel_array, shape } = loadedData;
       const imageData = createVTKImageData(pixel_array, shape);
@@ -103,8 +96,9 @@ function App() {
 
       renderer.addVolume(volume);
       
+      // Create volume controller in a separate container
       const controllerWidget = vtkVolumeController.newInstance();
-      controllerWidget.setContainer(rootContainer);
+      controllerWidget.setContainer(controllerContainerRef.current);
       controllerWidget.setupContent(renderWindow, volume);
       controllerWidget.setExpanded(true);
       
@@ -113,7 +107,16 @@ function App() {
     }
   }, [loadedData]);
 
-  return <div ref={vtkContainerRef} style={{ width: '100vw', height: '100vh' }} />;
+  return (
+    <div className="flex flex-col h-screen">
+      <div ref={vtkContainerRef} className="flex-grow" />
+      <div 
+        ref={controllerContainerRef} 
+        className="w-full p-4 bg-gray-100"
+        style={{ maxHeight: '200px', overflowY: 'auto' }}
+      />
+    </div>
+  );
 }
 
 export default App;
