@@ -36,3 +36,37 @@
     transform: rotate(360deg);
   }
 }
+
+.app-container {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  grid-gap: 10px;
+  height: 100vh;
+}
+
+.left-pane {
+  background-color: #f0f0f0;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.middle-pane {
+  background-color: #fff;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.right-pane {
+  background-color: #f9f9f9;
+  padding: 10px;
+}
+
+.vtk-visualizer-container {
+  flex-grow: 1;
+  overflow: hidden;
+}
