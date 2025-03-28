@@ -6,8 +6,7 @@ import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData';
 import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
 import vtkVolume from '@kitware/vtk.js/Rendering/Core/Volume';
 import vtkVolumeMapper from '@kitware/vtk.js/Rendering/Core/VolumeMapper';
-import vtkVolumeProperty from '@kitware/vtk.js/Rendering/Core/VolumeProperty';
-import vtkVolumeController from '@kitware/vtk.js/Interaction/UI/VolumeController';
+import vtkVolumeController from './components/VolumeController';
 
 async function fetchData(fileName, token) {
   try {
@@ -95,7 +94,7 @@ function App() {
 
   useEffect(() => {
     if (loadedData && context.current) {
-      const { renderer, renderWindow } = context.current;
+      const { renderer, renderWindow, fullScreenRenderer } = context.current;
 
       const { pixel_array, shape } = loadedData;
       const imageData = createVTKImageData(pixel_array, shape);
@@ -108,11 +107,23 @@ function App() {
 
       renderer.addVolume(volume);
       
-      // Create volume controller in a separate container
-      const controllerWidget = vtkVolumeController.newInstance();
+      const controllerWidget = vtkVolumeController.newInstance({
+        size: [400, 150],
+      });
       controllerWidget.setContainer(controllerContainerRef.current);
       controllerWidget.setupContent(renderWindow, volume);
       controllerWidget.setExpanded(true);
+
+      fullScreenRenderer.setResizeCallback(({ width, height }) => {
+        // 2px padding + 2x1px boder + 5px edge = 14
+        console.log(width)
+        if (width > 414) {
+          controllerWidget.setSize(400, 150);
+        } else {
+          controllerWidget.setSize(width - 14, 150);
+        }
+        controllerWidget.render();
+      });
       
       renderer.resetCamera();
       renderWindow.render();
