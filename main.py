@@ -95,8 +95,11 @@ async def get_3d_array(file_name: str, token: str = Depends(verify_token)):
 
         pixel_array = ds.pixel_array
 
+        print(f'Max pixel array: {pixel_array.max()}')
+        print(f'Min pixel array: {pixel_array.min()}')
+
         # Encode the processed pixel array to base64 to send to the frontend
-        encoded_pixel_array = base64.b64encode(pixel_array.tobytes()).decode("utf-8")
+        encoded_pixel_array = base64.b64encode(pixel_array.astype(np.uint16).tobytes(order='C')).decode("utf-8")
 
         return JSONResponse(content={"pixel_array": encoded_pixel_array, "shape": list(pixel_array.shape)})
     

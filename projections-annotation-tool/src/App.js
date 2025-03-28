@@ -30,8 +30,22 @@ function createVTKImageData(imageArray, shape) {
   imageData.setSpacing(1.0, 1.0, 1.0);
   imageData.setOrigin(0, 0, 0);
 
-  const decodedData = new Uint8Array(atob(imageArray).split("").map(char => char.charCodeAt(0)));
+  const decodedBase64 = atob(imageArray);
   
+  const buffer = new ArrayBuffer(decodedBase64.length);
+  const uint8View = new Uint8Array(buffer);
+  
+  for (let i = 0; i < decodedBase64.length; i++) {
+    uint8View[i] = decodedBase64.charCodeAt(i);
+  }
+
+  const dataView = new DataView(buffer);
+  const decodedData = new Uint16Array(buffer.byteLength / 2);
+  
+  for (let i = 0; i < decodedData.length; i++) {
+    decodedData[i] = dataView.getUint16(i * 2, true);
+  }
+
   const scalars = vtkDataArray.newInstance({
     values: decodedData,
     name: 'Scalars',
@@ -88,8 +102,6 @@ function App() {
       
       const mapper = vtkVolumeMapper.newInstance();
       mapper.setInputData(imageData);
-      
-      const volumeProperty = vtkVolumeProperty.newInstance();
       
       const volume = vtkVolume.newInstance();
       volume.setMapper(mapper);
