@@ -12,13 +12,10 @@ import vtkVolumeMapper from '@kitware/vtk.js/Rendering/Core/VolumeMapper';
 import vtkInteractorStyleTrackballCamera from '@kitware/vtk.js/Interaction/Style/InteractorStyleTrackballCamera';
 import vtkVolumeController from './VolumeController';
 
-
 async function fetchData(fileName, token) {
   try {
     const response = await axios.get(`http://localhost:8000/get_3d_array/${fileName}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     });
     return response.data;
   } catch (error) {
@@ -30,12 +27,10 @@ async function fetchData(fileName, token) {
 function createVTKImageData(imageArray, shape) {
   const imageData = vtkImageData.newInstance();
   imageData.setDimensions(shape[0], shape[1], shape[2]);
-  
   imageData.setSpacing(1.0, 1.0, 1.0);
   imageData.setOrigin(0, 0, 0);
 
   const decodedBase64 = atob(imageArray);
-  
   const buffer = new ArrayBuffer(decodedBase64.length);
   const uint8View = new Uint8Array(buffer);
   
@@ -73,7 +68,7 @@ function VTKVisualizer({ fileName, token }) {
       }
     };
     fetchAndRenderData();
-  }, []);
+  }, [fileName]);
 
   // Initialize VTK rendering context
   useEffect(() => {
@@ -142,11 +137,8 @@ function VTKVisualizer({ fileName, token }) {
   useEffect(() => {
     if (loadedData && context.current) {
       const { renderer, renderWindow } = context.current;
-      
-      // Clear previous volumes
-      renderer.getVolumes().forEach(vol => {
-        renderer.removeVolume(vol);
-      });
+
+      renderer.removeAllViewProps();
       
       // Create new volume from loaded data
       const { pixel_array, shape } = loadedData;
