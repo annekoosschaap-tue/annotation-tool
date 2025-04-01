@@ -6,69 +6,52 @@ import { AnnotationPanel } from './components/AnnotationPanel';
 
 function App({ token }) {
   const [dicomFiles, setDicomFiles] = useState([]);
-    const [selectedFile, setSelectedFile] = useState(null);
-    const [rao, setRao] = useState(null);
-    const [cran, setCran] = useState(null);
-    const [viewVector, setViewVector] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [rao, setRao] = useState(null);
+  const [cran, setCran] = useState(null);
+  const [viewVector, setViewVector] = useState(null);
 
   useEffect(() => {
     if (token) {
-      // Fetch the DICOM files once the token is available
       axios.get('http://127.0.0.1:8000/dicom-files', {
-        headers: {
-          'Authorization': `Bearer ${token}`,  // Send token in the Authorization header
-        }
+        headers: { 'Authorization': `Bearer ${token}` },
       })
-        .then(response => {
-          setDicomFiles(response.data.files);
-        })
-        .catch(error => console.log(error));
+      .then(response => setDicomFiles(response.data.files))
+      .catch(error => console.log(error));
     }
   }, [token]);
   
   const handleFileSelection = (fileName) => {
     setSelectedFile(fileName);
-
-    // Fetch angles and view vector data from FastAPI
     axios.get(`http://127.0.0.1:8000/annotations/${fileName}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,  // Send token in the Authorization header
-      }
+      headers: { 'Authorization': `Bearer ${token}` },
     })
-      .then(response => {
-        const annotations = response.data.annotations[0] || {};
-        setRao(annotations.rao || 'N/A');
-        setCran(annotations.cran || 'N/A');
-        setViewVector(annotations.viewVector || 'N/A');
-      });
+    .then(response => {
+      const annotations = response.data.annotations[0] || {};
+      setRao(annotations.rao || 'N/A');
+      setCran(annotations.cran || 'N/A');
+      setViewVector(annotations.viewVector || 'N/A');
+    });
   };
 
-  
   return (
-    <div className="app-container">
-      <div className="left-pane">
-        <h2>Patients</h2>
+    <div className="app-container" >
+      <div className="file-list" style={{ width: '20%', padding: '10px', overflowY: 'auto', borderRight: '1px solid #ccc' }}>
+        <h3>Available Files</h3>
         <ul>
           {dicomFiles.map(file => (
-            <li key={file} onClick={() => handleFileSelection(file)}>
+            <li key={file} onClick={() => handleFileSelection(file)} style={{ cursor: 'pointer', padding: '5px' }}>
               {file}
             </li>
           ))}
         </ul>
       </div>
-      <div className="middle-pane">
-        {selectedFile && <VTKVisualizer fileName={selectedFile} token={token} />}
+      <div className="visualizer-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px', height: '100vh' }}>
+        {selectedFile && <VTKVisualizer fileName={selectedFile} fileList={dicomFiles} token={token} />}
       </div>
-      <div className="right-pane">
-        <h2>Current working projection</h2>
-        {selectedFile && (
-          <div>
-            <p><strong>RAO:</strong> {rao}</p>
-            <p><strong>CRAN:</strong> {cran}</p>
-            <p><strong>View Vector:</strong> {viewVector}</p>
-            <AnnotationPanel fileName={selectedFile} token={token} />
-          </div>
-        )}
+      <div className="annotation-panel" style={{ width: '20%', padding: '10px', overflowY: 'auto', borderLeft: '1px solid #ccc' }}>
+        <h3>Annotations</h3>
+        {selectedFile && <AnnotationPanel fileName={selectedFile} token={token} />}
       </div>
     </div>
   );
