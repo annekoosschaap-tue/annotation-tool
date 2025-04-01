@@ -12,10 +12,13 @@ import vtkVolumeMapper from '@kitware/vtk.js/Rendering/Core/VolumeMapper';
 import vtkInteractorStyleTrackballCamera from '@kitware/vtk.js/Interaction/Style/InteractorStyleTrackballCamera';
 import vtkVolumeController from './VolumeController';
 
-async function fetchData(fileName, token) {
+async function fetchData(fileName) {
   try {
     const response = await axios.get(`http://localhost:8000/get_3d_array/${fileName}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      withCredentials: true, 
+      headers: {
+        "Content-Type": "application/json",
+      },
     });
     return response.data;
   } catch (error) {
@@ -54,7 +57,7 @@ function createVTKImageData(imageArray, shape) {
   return imageData;
 }
 
-function VTKVisualizer({ fileName, token }) {
+function VTKVisualizer({ fileName }) {
   const vtkContainerRef = useRef(null);
   const controllerContainerRef = useRef(null);
   const context = useRef(null);
@@ -62,10 +65,11 @@ function VTKVisualizer({ fileName, token }) {
 
   useEffect(() => {
     const fetchAndRenderData = async () => {
-      const data = await fetchData(fileName, token);
+      const data = await fetchData(fileName);
       if (data) {
         setLoadedData(data);
       }
+      console.log(data);
     };
     fetchAndRenderData();
   }, [fileName]);

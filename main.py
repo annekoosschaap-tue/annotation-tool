@@ -1,7 +1,7 @@
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import FileResponse, JSONResponse, Response
+from pydicom.filebase import DicomBytesIO
 import base64
 import os
 import json
@@ -14,21 +14,18 @@ app = FastAPI()
 # Allow frontend to communicate with FastAPI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update this for production
+    allow_origins=["http://localhost:3000"],  # Restrict to frontend origin
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Use HTTPBearer instead of OAuth2PasswordBearer
-security = HTTPBearer()
+DICOM_DIR = r"C:\Users\s149220\Documents\PhD\PhD\Datasets\Aneurisk_dicoms"
 
-DICOM_DIR = r"C:\Users\s149220\Documents\PhD\PhD\Datasets\Aneurisk\C0001_dicom\C0001"
-
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials  # Extract the token from the Authorization header
-    if token != "test":  # Replace with actual token verification logic
-        raise HTTPException(status_code=401, detail="Invalid token")
+async def verify_token(request: Request):
+    token = request.cookies.get("Philips.CFI.AccessToken")  # Extract token from cookies
+    if not token or token != "test":  # Replace with actual verification logic
+        raise HTTPException(status_code=401, detail="Invalid or missing token")
     return token
 
 # Function to load DICOM data
@@ -38,12 +35,50 @@ def load_dicom(file_path):
         return dicom_data
     except Exception as e:
         raise HTTPException(status_code=404, detail="DICOM file not found")
+    
+@app.post("/set-token")
+async def set_token(request: Request, response: Response):
+    """Receive a token from the frontend and store it in cookies."""
+    try:
+        body = await request.json()  # Read JSON body from request
+        token = body.get("token")
+
+        if not token:
+            raise HTTPException(status_code=400, detail="Token is required")
+
+        # Set token as an HTTP-only cookie
+        response.set_cookie(
+            key="Philips.CFI.AccessToken",
+            value=token,
+            httponly=True,
+            samesite="Lax"
+        )
+        return {"message": "Token set successfully"}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error setting token: {str(e)}")
 
 @app.get("/dicom-files")
 def get_dicom_files(token: str = Depends(verify_token)):
     """Return a list of available DICOM files."""
     dicom_files = [f for f in os.listdir(DICOM_DIR) if f.endswith(".dcm")]
     return {"files": dicom_files}
+
+@app.get("/get_dicom/{file_name}")
+async def get_dicom(file_name: str, token: str = Depends(verify_token)):
+    dicom_path = os.path.join(DICOM_DIR, file_name)
+
+    if not os.path.exists(dicom_path):
+        raise HTTPException(status_code=404, detail="DICOM file not found")
+
+    try:
+        dicom_data = pydicom.dcmread(dicom_path)
+        dicom_bytes = DicomBytesIO()
+        dicom_data.save_as(dicom_bytes)
+        dicom_bytes.seek(0)
+        return Response(content=dicom_bytes.read(), media_type="application/dicom")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading DICOM file: {str(e)}")
 
 @app.get("/get_3d_dicom/{file_name}")
 async def get_3d_dicom(file_name: str, token: str = Depends(verify_token)):
