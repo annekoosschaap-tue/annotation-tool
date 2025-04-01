@@ -1,6 +1,6 @@
 import { m as macro } from '@kitware/vtk.js/macros2.js';
 import vtkColorMaps from '@kitware/vtk.js/Rendering/Core/ColorTransferFunction/ColorMapsLite.js';
-import vtkPiecewiseGaussianWidget from '@kitware/vtk.js/Interaction/Widgets/PiecewiseGaussianWidget.js';
+import vtkPiecewiseGaussianWidget from './PiecewiseGaussianWidget.js';
 import { s as svgLogo } from '@kitware/vtk.js/Interaction/UI/Icons/Logo.svg.js';
 import { s as style } from '@kitware/vtk.js/Interaction/UI/VolumeController/VolumeController.module.css.js';
 
