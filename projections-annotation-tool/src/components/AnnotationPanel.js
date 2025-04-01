@@ -22,16 +22,12 @@ export const AnnotationPanel = ({ fileName, token }) => {
   }, [fileName]);
 
   const handleSave = () => {
-    axios.post('http://127.0.0.1:8000/save-annotation', {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-      file_name: fileName,
-      angle: angle,
-      note: note,
-    }).then(response => {
-      alert('Annotation Saved!');
-      // Optionally, fetch the annotations again to update the list
+    console.log(token)
+    axios.post(
+      'http://127.0.0.1:8000/save-annotation', 
+      { file_name: fileName, angle: angle, note: note },
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    ).then(response => {
       setAnnotations(prevAnnotations => [...prevAnnotations, { angle, note }]);
     });
   };
