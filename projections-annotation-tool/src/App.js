@@ -47,7 +47,7 @@ function App({ token }) {
         </ul>
       </div>
       <div className="visualizer-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px', height: '100vh' }}>
-        {selectedFile && <VTKVisualizer fileName={selectedFile} fileList={dicomFiles} token={token} />}
+        {selectedFile && <VTKVisualizer fileName={selectedFile} token={token} />}
       </div>
       <div className="annotation-panel" style={{ width: '20%', padding: '10px', overflowY: 'auto', borderLeft: '1px solid #ccc' }}>
         <h3>Annotations</h3>

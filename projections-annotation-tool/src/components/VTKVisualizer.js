@@ -59,7 +59,7 @@ function createVTKImageData(imageArray, shape) {
   return imageData;
 }
 
-function VTKVisualizer({ fileName, fileList, token }) {
+function VTKVisualizer({ fileName, token }) {
   const vtkContainerRef = useRef(null);
   const controllerContainerRef = useRef(null);
   const context = useRef(null);
@@ -113,9 +113,11 @@ function VTKVisualizer({ fileName, fileList, token }) {
       const resizeObserver = new ResizeObserver(() => {
         requestAnimationFrame(() => {
           if (vtkContainerRef.current) {
+            const visualizerContainer = document.querySelector(".visualizer-container");
+            visualizerContainer.style.display = "none";
+            visualizerContainer.style.display = "block";
             const { width, height } = document.querySelector(".visualizer-container")?.getBoundingClientRect();
             openGLRenderWindow.setSize(width, height);
-            document.querySelector(".visualizer-container").style.padding = "0";
             renderWindow.render();
           }
         });
