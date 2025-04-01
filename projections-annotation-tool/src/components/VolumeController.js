@@ -1,6 +1,6 @@
 import { m as macro } from '@kitware/vtk.js/macros2.js';
 import vtkColorMaps from '@kitware/vtk.js/Rendering/Core/ColorTransferFunction/ColorMapsLite.js';
-import vtkPiecewiseGaussianWidget from './PiecewiseGaussianWidget.js';
+import vtkPiecewiseGaussianWidget from '@kitware/vtk.js/Interaction/Widgets/PiecewiseGaussianWidget.js';
 import { s as svgLogo } from '@kitware/vtk.js/Interaction/UI/Icons/Logo.svg.js';
 import { s as style } from '@kitware/vtk.js/Interaction/UI/VolumeController/VolumeController.module.css.js';
 
@@ -96,7 +96,16 @@ function vtkVolumeController(publicAPI, model) {
       iconSize: 0,
       padding: 10
     });
-    model.widget.addGaussian(0.5, 1.0, 0.5, 0.5, 0.4);
+
+    const percentile = (arr, p) => {
+      const sorted = [...arr].sort((a, b) => a - b);
+      const index = Math.floor(p * (sorted.length - 1));
+      return sorted[index];
+    };
+    const p99_5 = percentile(dataArray.getData(), 0.998);
+    const range = dataArray.getRange();
+    const normalizedP99_5 = ((p99_5 - range[0]) / (range[1] - range[0]));
+    model.widget.addGaussian(normalizedP99_5, 1, 0.1, 0, 2);
     model.widget.setDataArray(dataArray.getData());
     model.widget.setColorTransferFunction(lookupTable);
     model.widget.applyOpacity(piecewiseFunction);
