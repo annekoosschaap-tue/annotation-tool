@@ -1,12 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
-import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
+import vtkRenderWindow from '@kitware/vtk.js/Rendering/Core/RenderWindow';
+import vtkRenderWindowInteractor from '@kitware/vtk.js/Rendering/Core/RenderWindowInteractor';
+import vtkRenderer from '@kitware/vtk.js/Rendering/Core/Renderer';
+import vtkOpenGLRenderWindow from '@kitware/vtk.js/Rendering/OpenGL/RenderWindow';
 import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData';
 import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
 import vtkVolume from '@kitware/vtk.js/Rendering/Core/Volume';
 import vtkVolumeMapper from '@kitware/vtk.js/Rendering/Core/VolumeMapper';
+import vtkInteractorStyleTrackballCamera from '@kitware/vtk.js/Interaction/Style/InteractorStyleTrackballCamera';
 import vtkVolumeController from './VolumeController';
+
 
 async function fetchData(fileName, token) {
   try {
@@ -54,31 +59,11 @@ function createVTKImageData(imageArray, shape) {
   return imageData;
 }
 
-function VTKVisualizer({ fileName, token }) {
+function VTKVisualizer({ fileName, fileList, token }) {
   const vtkContainerRef = useRef(null);
   const controllerContainerRef = useRef(null);
   const context = useRef(null);
   const [loadedData, setLoadedData] = useState(null);
-
-  useEffect(() => {
-    if (!context.current) {
-      const fullScreenRenderer = vtkFullScreenRenderWindow.newInstance({
-        rootContainer: vtkContainerRef.current,
-      });
-      
-      const renderer = fullScreenRenderer.getRenderer();
-      const renderWindow = fullScreenRenderer.getRenderWindow();
-      
-      context.current = { fullScreenRenderer, renderWindow, renderer };
-    }
-
-    return () => {
-      if (context.current) {
-        context.current.fullScreenRenderer.delete();
-        context.current = null;
-      }
-    };
-  }, []);
 
   useEffect(() => {
     const fetchAndRenderData = async () => {
@@ -90,10 +75,78 @@ function VTKVisualizer({ fileName, token }) {
     fetchAndRenderData();
   }, []);
 
+  // Initialize VTK rendering context
+  useEffect(() => {
+    if (!context.current && vtkContainerRef.current) {
+      // Create the VTK render window
+      const renderWindow = vtkRenderWindow.newInstance();
+      
+      // Create the OpenGL render window and associate it with the container
+      const openGLRenderWindow = vtkOpenGLRenderWindow.newInstance();
+      renderWindow.addView(openGLRenderWindow);
+      openGLRenderWindow.setContainer(vtkContainerRef.current);
+      
+      // Create the renderer
+      const renderer = vtkRenderer.newInstance();
+      renderWindow.addRenderer(renderer); // This is where the renderer is added to the renderWindow
+      
+      // Set up the interactor
+      const interactor = vtkRenderWindowInteractor.newInstance();
+      interactor.setView(openGLRenderWindow);
+      interactor.initialize();
+      interactor.bindEvents(vtkContainerRef.current);
+      
+      // Set up the interactor style
+      const interactorStyle = vtkInteractorStyleTrackballCamera.newInstance();
+      interactor.setInteractorStyle(interactorStyle);
+      
+      // Set background color
+      renderer.setBackground(0.1, 0.1, 0.1);
+      
+      // Store the context
+      context.current = { renderWindow, renderer, openGLRenderWindow, interactor };
+      const { width, height } = document.querySelector(".visualizer-container")?.getBoundingClientRect();
+      openGLRenderWindow.setSize(width, height);
+      document.querySelector(".visualizer-container").style.padding = "0";
+
+      // Handle window resize
+      const resizeObserver = new ResizeObserver(() => {
+        requestAnimationFrame(() => {
+          if (vtkContainerRef.current) {
+            const { width, height } = document.querySelector(".visualizer-container")?.getBoundingClientRect();
+            openGLRenderWindow.setSize(width, height);
+            document.querySelector(".visualizer-container").style.padding = "0";
+            renderWindow.render();
+          }
+        });
+      });
+      
+      resizeObserver.observe(vtkContainerRef.current);
+      
+      return () => {
+        resizeObserver.disconnect();
+        interactor.unbindEvents();
+        renderWindow.delete();
+        openGLRenderWindow.delete();
+        renderer.delete();
+        interactor.delete();
+        interactorStyle.delete();
+        context.current = null;
+      };
+    }
+  }, []);
+
+  // Update visualization when loaded data changes
   useEffect(() => {
     if (loadedData && context.current) {
-      const { renderer, renderWindow, fullScreenRenderer } = context.current;
-
+      const { renderer, renderWindow } = context.current;
+      
+      // Clear previous volumes
+      renderer.getVolumes().forEach(vol => {
+        renderer.removeVolume(vol);
+      });
+      
+      // Create new volume from loaded data
       const { pixel_array, shape } = loadedData;
       const imageData = createVTKImageData(pixel_array, shape);
       
@@ -102,40 +155,56 @@ function VTKVisualizer({ fileName, token }) {
       
       const volume = vtkVolume.newInstance();
       volume.setMapper(mapper);
-
+      
       renderer.addVolume(volume);
       
-      const controllerWidget = vtkVolumeController.newInstance({
-        size: [400, 150],
-      });
-      controllerWidget.setContainer(controllerContainerRef.current);
-      controllerWidget.setupContent(renderWindow, volume);
-      controllerWidget.setExpanded(true);
-
-      fullScreenRenderer.setResizeCallback(({ width, height }) => {
-        // 2px padding + 2x1px boder + 5px edge = 14
-        console.log(width)
-        if (width > 414) {
-          controllerWidget.setSize(400, 150);
-        } else {
-          controllerWidget.setSize(width - 14, 150);
+      // Set up volume controller
+      if (controllerContainerRef.current) {
+        // Remove existing controller if any
+        while (controllerContainerRef.current.firstChild) {
+          controllerContainerRef.current.removeChild(controllerContainerRef.current.firstChild);
         }
-        controllerWidget.render();
-      });
+        
+        const controllerWidget = vtkVolumeController.newInstance({
+          size: [400, 150],
+        });
+        controllerWidget.setContainer(controllerContainerRef.current);
+        controllerWidget.setupContent(renderWindow, volume);
+        controllerWidget.setExpanded(true);
+      }
       
+      // Reset camera to fit the volume
       renderer.resetCamera();
       renderWindow.render();
     }
   }, [loadedData]);
 
+  // Update renderer size on window resize
+  useEffect(() => {
+    if (context.current && vtkContainerRef.current) {
+      const { openGLRenderWindow, renderWindow } = context.current;
+      const { width, height } = vtkContainerRef.current.getBoundingClientRect();
+      openGLRenderWindow.setSize(width, height);
+      renderWindow.render();
+    }
+  }, []);
+
   return (
-    <div className="flex flex-col h-screen">
-      <div ref={vtkContainerRef} className="flex-grow" />
-      <div 
-        ref={controllerContainerRef} 
-        className="w-full p-4 bg-gray-100"
-        style={{ maxHeight: '300px', overflowY: 'auto' }}
-      />
+    <div>
+      <div>
+        <div 
+          ref={vtkContainerRef} 
+        />
+        <div 
+          ref={controllerContainerRef} 
+          className="w-64 p-4 bg-gray-100"
+          style={{
+            position: "absolute",
+            top: 0,
+            height: "auto",
+          }}
+        />
+      </div>
     </div>
   );
 }
