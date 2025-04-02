@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
+import dicomParser from 'dicom-parser';
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
 import vtkRenderWindow from '@kitware/vtk.js/Rendering/Core/RenderWindow';
 import vtkRenderWindowInteractor from '@kitware/vtk.js/Rendering/Core/RenderWindowInteractor';
@@ -14,101 +15,157 @@ import vtkVolumeController from './VolumeController';
 
 async function fetchData(fileName) {
   try {
-    const response = await axios.get(`http://localhost:8000/get_3d_array/${fileName}`, {
-      withCredentials: true, 
+    const response = await axios.get(`http://localhost:8000/get_dicom/${fileName}`, {
+      responseType: 'arraybuffer', // Ensure you're getting the raw binary data
+      withCredentials: true,
       headers: {
         "Content-Type": "application/json",
       },
     });
-    return response.data;
+    return response.data; // This should now be a binary ArrayBuffer
   } catch (error) {
-    console.error("Error fetching 3D data:", error);
+    console.error("Error fetching DICOM data:", error);
     return null;
   }
 }
 
-function createVTKImageData(imageArray, shape) {
-  const imageData = vtkImageData.newInstance();
-  imageData.setDimensions(shape[0], shape[1], shape[2]);
-  imageData.setSpacing(1.0, 1.0, 1.0);
-  imageData.setOrigin(0, 0, 0);
+function parseDicom(dicomData) {
+  const byteArray = new Uint8Array(dicomData); // Convert to byte array
 
-  const decodedBase64 = atob(imageArray);
-  const buffer = new ArrayBuffer(decodedBase64.length);
-  const uint8View = new Uint8Array(buffer);
-  
-  for (let i = 0; i < decodedBase64.length; i++) {
-    uint8View[i] = decodedBase64.charCodeAt(i);
+  console.log('byteArray', byteArray)
+  try {
+    const dataSet = dicomParser.parseDicom(byteArray); // Parse the DICOM data
+    console.log('dataset', dataSet)
+    // Extract metadata and pixel data
+    const rows = dataSet.uint16('x00280010');
+    console.log('rows', rows)
+    const columns = dataSet.uint16('x00280011');
+    console.log('columns', columns)
+    const numberOfFrames = dataSet.string('x00280008');
+    console.log('numberofslices', numberOfFrames)
+    const pixelSpacingStr = dataSet.string('x00280030');
+    console.log('pixelspacing', pixelSpacingStr)
+    const spacing = pixelSpacingStr ? pixelSpacingStr.split('\\').map(parseFloat) : [1.0, 1.0]; 
+    spacing.push(1.0);
+    console.log('spacing', spacing)
+    const pixelDataElement = dataSet.elements.x7fe00010;
+    console.log('pixeldataelement', pixelDataElement)
+    if (!pixelDataElement) {
+      throw new Error("No pixel data found in the DICOM file.");
+    }
+    let pixelData;
+    if (dataSet.elements.x7fe00010.encapsulated) {
+      // Encapsulated (JPEG, JPEG2000, etc.)
+      pixelData = dicomParser.readEncapsulatedPixelData(dataSet, pixelDataElement, 0);
+    } else {
+      // Uncompressed (RAW)
+      pixelData = dataSet.byteArray.slice(pixelDataElement.dataOffset, pixelDataElement.dataOffset + pixelDataElement.length);
+    }
+    console.log('pixeldata', pixelData)
+    return {
+      pixel_array: pixelData,
+      shape: [columns, rows, numberOfFrames],
+      spacing: spacing,
+      origin: [0, 0, 0], // Default origin
+    };
+  } catch (error) {
+    console.error("Error parsing DICOM data:", error);
+    return null;
   }
-
-  const dataView = new DataView(buffer);
-  const decodedData = new Uint16Array(buffer.byteLength / 2);
-  
-  for (let i = 0; i < decodedData.length; i++) {
-    decodedData[i] = dataView.getUint16(i * 2, true);
-  }
-
-  const scalars = vtkDataArray.newInstance({
-    values: decodedData,
-    name: 'Scalars',
-  });
-
-  imageData.getPointData().setScalars(scalars);
-  return imageData;
 }
+
+function createVTKImageData(parsedData) {
+  console.log('Create VTK image');
+  if (!parsedData || !parsedData.pixel_array || parsedData.pixel_array.length === 0) {
+    console.error("Invalid pixel array: ", parsedData.pixel_array);
+    return null;
+  }
+  const imageData = vtkImageData.newInstance();
+  console.log(parsedData)
+  const { pixel_array, shape, spacing, origin } = parsedData;
+
+  console.log('shape', shape)
+
+  imageData.setDimensions(shape[0], shape[1], shape[2]);
+  console.log('dimensions', imageData.getDimensions())
+  imageData.setSpacing(spacing[0], spacing[1], spacing[2]);
+  console.log('spacing', imageData.getSpacing())
+  imageData.setOrigin(origin[0], origin[1], origin[2]);
+  console.log('origin', imageData.getOrigin())
+
+  console.log('pixel_array.length', pixel_array.length)
+
+  try {
+    // Determine bytes per pixel
+    const bytesPerPixel = pixel_array.length / (shape[0] * shape[1] * shape[2]);
+    if (bytesPerPixel !== 1 && bytesPerPixel !== 2) {
+      throw new Error(`Unexpected bytes per pixel: ${bytesPerPixel}`);
+    }
+
+    const decodedData = new Uint16Array(pixel_array.length / (bytesPerPixel === 2 ? 2 : 1));
+    const dataView = new DataView(pixel_array.buffer);
+
+    for (let i = 0; i < decodedData.length; i++) {
+      decodedData[i] = dataView.getUint16(i * 2, true);
+    }
+
+    const scalars = vtkDataArray.newInstance({
+      values: decodedData,
+      name: 'Scalars',
+    });
+
+    imageData.getPointData().setScalars(scalars);
+    return imageData;
+  } catch (error) {
+    console.error("Error processing pixel data:", error);
+    return null;
+  }
+}
+
 
 function VTKVisualizer({ fileName }) {
   const vtkContainerRef = useRef(null);
   const controllerContainerRef = useRef(null);
   const context = useRef(null);
-  const [loadedData, setLoadedData] = useState(null);
+  const [parsedData, setParsedData] = useState(null);
 
   useEffect(() => {
     const fetchAndRenderData = async () => {
-      const data = await fetchData(fileName);
-      if (data) {
-        setLoadedData(data);
+      const dicomData = await fetchData(fileName);
+      if (dicomData) {
+        const parsedData = parseDicom(dicomData); // Parse DICOM binary data
+        setParsedData(parsedData); // Set the parsed data
       }
-      console.log(data);
     };
     fetchAndRenderData();
   }, [fileName]);
 
-  // Initialize VTK rendering context
   useEffect(() => {
     if (!context.current && vtkContainerRef.current) {
-      // Create the VTK render window
+      // VTK setup
       const renderWindow = vtkRenderWindow.newInstance();
-      
-      // Create the OpenGL render window and associate it with the container
       const openGLRenderWindow = vtkOpenGLRenderWindow.newInstance();
       renderWindow.addView(openGLRenderWindow);
       openGLRenderWindow.setContainer(vtkContainerRef.current);
-      
-      // Create the renderer
+
       const renderer = vtkRenderer.newInstance();
-      renderWindow.addRenderer(renderer); // This is where the renderer is added to the renderWindow
-      
-      // Set up the interactor
+      renderWindow.addRenderer(renderer);
+
       const interactor = vtkRenderWindowInteractor.newInstance();
       interactor.setView(openGLRenderWindow);
       interactor.initialize();
       interactor.bindEvents(vtkContainerRef.current);
-      
-      // Set up the interactor style
+
       const interactorStyle = vtkInteractorStyleTrackballCamera.newInstance();
       interactor.setInteractorStyle(interactorStyle);
-      
-      // Set background color
+
       renderer.setBackground(0.1, 0.1, 0.1);
-      
-      // Store the context
+
       context.current = { renderWindow, renderer, openGLRenderWindow, interactor };
       const { width, height } = document.querySelector(".visualizer-container")?.getBoundingClientRect();
       openGLRenderWindow.setSize(width, height);
       document.querySelector(".visualizer-container").style.padding = "0";
 
-      // Handle window resize
       const resizeObserver = new ResizeObserver(() => {
         requestAnimationFrame(() => {
           if (vtkContainerRef.current) {
@@ -121,9 +178,8 @@ function VTKVisualizer({ fileName }) {
           }
         });
       });
-      
       resizeObserver.observe(vtkContainerRef.current);
-      
+
       return () => {
         resizeObserver.disconnect();
         interactor.unbindEvents();
@@ -137,32 +193,28 @@ function VTKVisualizer({ fileName }) {
     }
   }, []);
 
-  // Update visualization when loaded data changes
   useEffect(() => {
-    if (loadedData && context.current) {
+    if (parsedData && context.current) {
       const { renderer, renderWindow } = context.current;
 
       renderer.removeAllViewProps();
-      
+
       // Create new volume from loaded data
-      const { pixel_array, shape } = loadedData;
-      const imageData = createVTKImageData(pixel_array, shape);
-      
+      const imageData = createVTKImageData(parsedData);
+
       const mapper = vtkVolumeMapper.newInstance();
       mapper.setInputData(imageData);
-      
+
       const volume = vtkVolume.newInstance();
       volume.setMapper(mapper);
-      
+
       renderer.addVolume(volume);
-      
-      // Set up volume controller
+
       if (controllerContainerRef.current) {
-        // Remove existing controller if any
         while (controllerContainerRef.current.firstChild) {
           controllerContainerRef.current.removeChild(controllerContainerRef.current.firstChild);
         }
-        
+
         const controllerWidget = vtkVolumeController.newInstance({
           size: [400, 150],
         });
@@ -170,14 +222,12 @@ function VTKVisualizer({ fileName }) {
         controllerWidget.setupContent(renderWindow, volume);
         controllerWidget.setExpanded(true);
       }
-      
-      // Reset camera to fit the volume
+
       renderer.resetCamera();
       renderWindow.render();
     }
-  }, [loadedData]);
+  }, [parsedData]);
 
-  // Update renderer size on window resize
   useEffect(() => {
     if (context.current && vtkContainerRef.current) {
       const { openGLRenderWindow, renderWindow } = context.current;
@@ -189,20 +239,16 @@ function VTKVisualizer({ fileName }) {
 
   return (
     <div>
-      <div>
-        <div 
-          ref={vtkContainerRef} 
-        />
-        <div 
-          ref={controllerContainerRef} 
-          className="w-64 p-4 bg-gray-100"
-          style={{
-            position: "absolute",
-            top: 0,
-            height: "auto",
-          }}
-        />
-      </div>
+      <div ref={vtkContainerRef} />
+      <div
+        ref={controllerContainerRef}
+        className="w-64 p-4 bg-gray-100"
+        style={{
+          position: "absolute",
+          top: 0,
+          height: "auto",
+        }}
+      />
     </div>
   );
 }

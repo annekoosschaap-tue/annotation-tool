@@ -9,9 +9,10 @@ export const AnnotationPanel = ({ fileName, token }) => {
   // Fetch existing annotations for the file on component mount
   useEffect(() => {
     axios.get(`http://127.0.0.1:8000/annotations/${fileName}`, {
+      withCredentials: true,  
       headers: {
-        'Authorization': `Bearer ${token}`,
-      }
+        "Content-Type": "application/json",
+      },
     })
       .then(response => {
         setAnnotations(response.data.annotations);

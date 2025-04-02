@@ -13,7 +13,7 @@ function App() {
 
   useEffect(() => {
     axios.get('http://localhost:8000/dicom-files', {
-      withCredentials: true,  // This ensures cookies (including the access token) are sent with the request
+      withCredentials: true, 
       headers: {
         "Content-Type": "application/json",
       },
@@ -25,7 +25,7 @@ function App() {
   const handleFileSelection = (fileName) => {
     setSelectedFile(fileName);
     axios.get(`http://127.0.0.1:8000/annotations/${fileName}`, {
-      withCredentials: true,  // Automatically sends the Philips.CFI.AccessToken cookie
+      withCredentials: true,  
     })
     .then(response => {
       const annotations = response.data.annotations[0] || {};
