@@ -14,7 +14,7 @@ app = FastAPI()
 # Allow frontend to communicate with FastAPI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["http://localhost:3000", "https://annekoosschaap-tue.github.io"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -23,7 +23,7 @@ app.add_middleware(
 DICOM_DIR = r"C:\Users\s149220\Documents\PhD\PhD\Datasets\Aneurisk_dicoms"
 
 async def verify_token(request: Request):
-    token = request.cookies.get("Philips.CFI.AccessToken")  # Extract token from cookies
+    token = request.cookies.get("Philips.CFI.AccessToken")
     if not token or token != "test":  # Replace with actual verification logic
         raise HTTPException(status_code=401, detail="Invalid or missing token")
     return token
@@ -40,24 +40,22 @@ def load_dicom(file_path):
 async def set_token(request: Request, response: Response):
     """Receive a token from the frontend and store it in cookies."""
     try:
-        print("Headers:", request.headers)
         body = await request.json()  # Read JSON body from request
-        print("Received body:", body)
         token = body.get("token")
-        print(token)
         if not token:
             raise HTTPException(status_code=400, detail="Token is required")
 
-        # Set token as an HTTP-only cookie
         response.set_cookie(
             key="Philips.CFI.AccessToken",
             value=token,
             httponly=True,
-            samesite="Lax"
+            samesite="None",
+            secure=True
         )
         return {"message": "Token set successfully"}
     
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500, detail=f"Error setting token: {str(e)}")
 
 @app.get("/dicom-files")
