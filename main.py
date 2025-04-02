@@ -14,7 +14,7 @@ app = FastAPI()
 # Allow frontend to communicate with FastAPI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Restrict to frontend origin
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,9 +40,11 @@ def load_dicom(file_path):
 async def set_token(request: Request, response: Response):
     """Receive a token from the frontend and store it in cookies."""
     try:
+        print("Headers:", request.headers)
         body = await request.json()  # Read JSON body from request
+        print("Received body:", body)
         token = body.get("token")
-
+        print(token)
         if not token:
             raise HTTPException(status_code=400, detail="Token is required")
 
