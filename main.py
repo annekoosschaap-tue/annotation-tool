@@ -175,3 +175,6 @@ def get_annotations(file_name: str, token: str = Depends(verify_token)):
         print(annotations.get(file_name, []))
         return {"annotations": annotations.get(file_name, [])}
     return {"annotations": []}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
