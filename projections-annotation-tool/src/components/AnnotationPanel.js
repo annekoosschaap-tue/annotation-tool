@@ -8,7 +8,7 @@ export const AnnotationPanel = ({ fileName, token }) => {
 
   // Fetch existing annotations for the file on component mount
   useEffect(() => {
-    axios.get(`http://127.0.0.1:8000/annotations/${fileName}`, {
+    axios.get(`http://localhost:8000/annotations/${fileName}`, {
       withCredentials: true,  
       headers: {
         "Content-Type": "application/json",
@@ -25,9 +25,9 @@ export const AnnotationPanel = ({ fileName, token }) => {
   const handleSave = () => {
     console.log(token)
     axios.post(
-      'http://127.0.0.1:8000/save-annotation', 
+      'http://localhost:8000/save-annotation', 
       { file_name: fileName, angle: angle, note: note },
-      { headers: { 'Authorization': `Bearer ${token}` } }
+      { withCredentials: true }
     ).then(response => {
       setAnnotations(prevAnnotations => [...prevAnnotations, { angle, note }]);
     });

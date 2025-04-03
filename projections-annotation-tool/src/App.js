@@ -24,7 +24,7 @@ function App() {
   
   const handleFileSelection = (fileName) => {
     setSelectedFile(fileName);
-    axios.get(`http://127.0.0.1:8000/annotations/${fileName}`, {
+    axios.get(`http://localhost:8000/annotations/${fileName}`, {
       withCredentials: true,  
     })
     .then(response => {
