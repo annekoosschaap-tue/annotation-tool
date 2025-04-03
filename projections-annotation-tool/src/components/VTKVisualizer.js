@@ -29,6 +29,26 @@ async function fetchData(fileName) {
   }
 }
 
+function findTag(dataSet, tag) {
+  if (!dataSet || !dataSet.elements) return null;
+  
+  if (dataSet.elements[tag]) {
+      return dataSet.string(tag);  // Found at top level
+  }
+  
+  // Search in sequences
+  for (const key in dataSet.elements) {
+      const element = dataSet.elements[key];
+      if (element.items) {
+          for (const item of element.items) {
+              const nestedValue = findTag(item.dataSet, tag);
+              if (nestedValue) return nestedValue;
+          }
+      }
+  }
+  return null;
+}
+
 function parseDicom(dicomData) {
   const byteArray = new Uint8Array(dicomData); // Convert to byte array
 
@@ -41,18 +61,31 @@ function parseDicom(dicomData) {
     console.log('rows', rows)
     const columns = dataSet.uint16('x00280011');
     console.log('columns', columns)
-    const numberOfFrames = dataSet.string('x00280008');
+
+    const numberOfFrames = findTag(dataSet, 'x00280008');
     console.log('numberofslices', numberOfFrames)
     const pixelSpacingStr = dataSet.string('x00280030');
     console.log('pixelspacing', pixelSpacingStr)
     const spacing = pixelSpacingStr ? pixelSpacingStr.split('\\').map(parseFloat) : [1.0, 1.0]; 
     spacing.push(1.0);
     console.log('spacing', spacing)
+
+    const iopStr = findTag(dataSet, 'x00200037')
+    console.log('iopStr', iopStr);
+    const iop = iopStr ? iopStr.split('\\').map(parseFloat) : [1, 0, 0, 0, 1, 0]; 
+    console.log('iop', iop);
+
+    const ippStr = findTag(dataSet, 'x00200032');
+    console.log('ippStr', ippStr);
+    const ipp = ippStr ? ippStr.split('\\').map(parseFloat) : [0, 0, 0];
+    console.log('ipp', ipp);
+
     const pixelDataElement = dataSet.elements.x7fe00010;
     console.log('pixeldataelement', pixelDataElement)
     if (!pixelDataElement) {
       throw new Error("No pixel data found in the DICOM file.");
     }
+
     let pixelData;
     if (dataSet.elements.x7fe00010.encapsulated) {
       // Encapsulated (JPEG, JPEG2000, etc.)
@@ -62,16 +95,36 @@ function parseDicom(dicomData) {
       pixelData = dataSet.byteArray.slice(pixelDataElement.dataOffset, pixelDataElement.dataOffset + pixelDataElement.length);
     }
     console.log('pixeldata', pixelData)
+    
     return {
       pixel_array: pixelData,
       shape: [columns, rows, numberOfFrames],
       spacing: spacing,
-      origin: [0, 0, 0], // Default origin
+      iop: iop,
+      ipp: ipp,
     };
   } catch (error) {
     console.error("Error parsing DICOM data:", error);
     return null;
   }
+}
+
+function computeDirectionMatrix(iop) {
+// Compute the normal vector as the cross product
+  const normal = [
+      iop[1] * iop[5] - iop[2] * iop[4],
+      iop[2] * iop[3] - iop[0] * iop[5],
+      iop[0] * iop[4] - iop[1] * iop[3]
+  ];
+
+  // Construct the direction matrix in column-major order (matching DICOM convention)
+  const directionMatrix = [
+      iop[0], iop[3], normal[0],
+      iop[1], iop[4], normal[1],
+      iop[2], iop[5], normal[2]
+  ];
+
+  return directionMatrix;
 }
 
 function createVTKImageData(parsedData) {
@@ -82,16 +135,21 @@ function createVTKImageData(parsedData) {
   }
   const imageData = vtkImageData.newInstance();
   console.log(parsedData)
-  const { pixel_array, shape, spacing, origin } = parsedData;
+  const { pixel_array, shape, spacing, iop, ipp } = parsedData;
 
   console.log('shape', shape)
-
   imageData.setDimensions(shape[0], shape[1], shape[2]);
   console.log('dimensions', imageData.getDimensions())
+
   imageData.setSpacing(spacing[0], spacing[1], spacing[2]);
   console.log('spacing', imageData.getSpacing())
-  imageData.setOrigin(origin[0], origin[1], origin[2]);
+
+  imageData.setOrigin(ipp[0], ipp[1], ipp[2]);
   console.log('origin', imageData.getOrigin())
+
+  const directionMatrix = computeDirectionMatrix(iop);  
+  imageData.setDirection(directionMatrix.flat());
+  // console.log('directionMatrix', imageData.getDirection());
 
   console.log('pixel_array.length', pixel_array.length)
 
@@ -201,6 +259,11 @@ function VTKVisualizer({ fileName }) {
 
       // Create new volume from loaded data
       const imageData = createVTKImageData(parsedData);
+
+      // console.log("Direction after:", imageData.getDirection());
+      console.log('Origin after', imageData.getOrigin());
+      console.log('Shape after', imageData.getDimensions());
+      console.log('Spacing after', imageData.getSpacing());
 
       const mapper = vtkVolumeMapper.newInstance();
       mapper.setInputData(imageData);
