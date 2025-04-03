@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from "./../config";
 
 export const AnnotationPanel = ({ fileName, token }) => {
   const [angle, setAngle] = useState('');
@@ -8,7 +9,7 @@ export const AnnotationPanel = ({ fileName, token }) => {
 
   // Fetch existing annotations for the file on component mount
   useEffect(() => {
-    axios.get(`http://localhost:8000/annotations/${fileName}`, {
+    axios.get(`${API_BASE_URL}/annotations/${fileName}`, {
       withCredentials: true,  
       headers: {
         "Content-Type": "application/json",
@@ -25,7 +26,7 @@ export const AnnotationPanel = ({ fileName, token }) => {
   const handleSave = () => {
     console.log(token)
     axios.post(
-      'http://localhost:8000/save-annotation', 
+      `${API_BASE_URL}/save-annotation`, 
       { file_name: fileName, angle: angle, note: note },
       { withCredentials: true }
     ).then(response => {

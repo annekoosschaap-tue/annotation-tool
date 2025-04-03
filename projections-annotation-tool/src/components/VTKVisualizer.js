@@ -12,10 +12,11 @@ import vtkVolume from '@kitware/vtk.js/Rendering/Core/Volume';
 import vtkVolumeMapper from '@kitware/vtk.js/Rendering/Core/VolumeMapper';
 import vtkInteractorStyleTrackballCamera from '@kitware/vtk.js/Interaction/Style/InteractorStyleTrackballCamera';
 import vtkVolumeController from './VolumeController';
+import { API_BASE_URL } from "./../config";
 
 async function fetchData(fileName) {
   try {
-    const response = await axios.get(`http://localhost:8000/get_dicom/${fileName}`, {
+    const response = await axios.get(`${API_BASE_URL}/get_dicom/${fileName}`, {
       responseType: 'arraybuffer', // Ensure you're getting the raw binary data
       withCredentials: true,
       headers: {
@@ -286,6 +287,10 @@ function VTKVisualizer({ fileName }) {
         controllerWidget.setExpanded(true);
       }
 
+      // const camera = renderer.getActiveCamera();
+      // camera.setPosition(0, -1, 0);
+      // camera.setFocalPoint(0, 0, 0);
+      // camera.setViewUp(0, 0, -1);  // Ensures the top of the image is correct
       renderer.resetCamera();
       renderWindow.render();
     }

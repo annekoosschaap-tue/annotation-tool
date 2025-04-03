@@ -8,6 +8,7 @@ import json
 import pydicom
 import pyvista as pv
 import numpy as np
+import uvicorn
 
 app = FastAPI()
 

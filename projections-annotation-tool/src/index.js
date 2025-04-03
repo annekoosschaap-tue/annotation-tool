@@ -4,6 +4,7 @@ import axios from "axios";
 import "./index.css";
 import App from "./App";
 import reportWebVitals from "./reportWebVitals";
+import { API_BASE_URL } from "./config";
 
 const RootComponent = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -14,7 +15,7 @@ const RootComponent = () => {
     if (userToken) {
       try {
         await axios.post(
-          "http://localhost:8000/set-token",
+          `${API_BASE_URL}/set-token`,
           { token: userToken }, // Send the token in request body
           { withCredentials: true } // Ensure cookies are sent and received
         );
@@ -33,7 +34,7 @@ const RootComponent = () => {
   // Verify if token is already set
   const verifyAuthentication = async () => {
     try {
-      await axios.get("http://localhost:8000/dicom-files", {
+      await axios.get(`${API_BASE_URL}/dicom-files`, {
         withCredentials: true, // Send cookies
       });
       setIsAuthenticated(true);

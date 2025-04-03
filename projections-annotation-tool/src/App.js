@@ -3,6 +3,7 @@ import axios from 'axios';
 import './App.css';
 import VTKVisualizer from './components/VTKVisualizer';
 import { AnnotationPanel } from './components/AnnotationPanel';
+import { API_BASE_URL } from "./config";
 
 function App() {
   const [dicomFiles, setDicomFiles] = useState([]);
@@ -12,7 +13,7 @@ function App() {
   const [viewVector, setViewVector] = useState(null);
 
   useEffect(() => {
-    axios.get('http://localhost:8000/dicom-files', {
+    axios.get(`${API_BASE_URL}/dicom-files`, {
       withCredentials: true, 
       headers: {
         "Content-Type": "application/json",
@@ -24,7 +25,7 @@ function App() {
   
   const handleFileSelection = (fileName) => {
     setSelectedFile(fileName);
-    axios.get(`http://localhost:8000/annotations/${fileName}`, {
+    axios.get(`${API_BASE_URL}/annotations/${fileName}`, {
       withCredentials: true,  
     })
     .then(response => {
