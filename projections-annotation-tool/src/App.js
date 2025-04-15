@@ -14,6 +14,7 @@ function App() {
     rao: 0,
     cran: 0
   });
+  const [selectedAnnotation, setSelectedAnnotation] = useState(null);
 
   // Load DICOM files
   useEffect(() => {
@@ -97,13 +98,13 @@ function App() {
 
       {/* Middle panel: 3D visualizer */}
       <div className="visualizer-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px', height: '100vh' }}>
-        {selectedFile && <VTKVisualizer fileName={selectedFile} onViewDataChange={setViewData} />}
+        {selectedFile && <VTKVisualizer fileName={selectedFile} onViewDataChange={setViewData} selectedAnnotation={selectedAnnotation}/>}
       </div>
 
       {/* Right panel: annotation panel */}
       <div className="annotation-panel" style={{ width: '20%', padding: '10px', overflowY: 'auto', borderLeft: '1px solid #ccc' }}>
         <h3>Annotations</h3>
-        {selectedFile && <AnnotationPanel fileName={selectedFile} viewData={viewData} updateAnnotationsCount={updateAnnotationsCount} />}
+        {selectedFile && <AnnotationPanel fileName={selectedFile} viewData={viewData} updateAnnotationsCount={updateAnnotationsCount} onAnnotationSelect={setSelectedAnnotation} />}
       </div>
     </div>
   );

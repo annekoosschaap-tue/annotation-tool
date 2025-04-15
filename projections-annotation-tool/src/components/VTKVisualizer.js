@@ -155,6 +155,7 @@ function getCameraViewAngles(renderer) {
   const position = camera.getPosition();
   const focalPoint = camera.getFocalPoint();
   const viewUp = camera.getViewUp();
+  console.log(`viewUp`, viewUp)
 
   // Calculate view direction vector
   const viewDirection = [
@@ -163,8 +164,12 @@ function getCameraViewAngles(renderer) {
     focalPoint[2] - position[2],
   ];
 
+  console.log(`viewDirection`, viewDirection)
+
   const norm = Math.sqrt(viewDirection.reduce((sum, val) => sum + val * val, 0));
+  console.log(`norm`, norm)
   const normalizedDirection = viewDirection.map(val => val / norm);
+  console.log(`normalizedDirection`, normalizedDirection)
 
   return {
     position,
@@ -188,10 +193,9 @@ function computeRAOAndCRAN(viewDirection) {
 }
 
 
-function VTKVisualizer({ fileName, onViewDataChange }) {
+function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation }) {
   const vtkContainerRef = useRef(null);
   const controllerContainerRef = useRef(null);
-  const viewInfoRef = useRef(null);
   const context = useRef(null);
   const [parsedData, setParsedData] = useState(null);
   const [viewData, setViewData] = useState({
@@ -354,6 +358,38 @@ function VTKVisualizer({ fileName, onViewDataChange }) {
     }
   }, []);
 
+  useEffect(() => {
+    if (selectedAnnotation && context.current) {
+      const { viewVector } = selectedAnnotation;
+      const { renderer, renderWindow } = context.current;
+      const camera = renderer.getActiveCamera();
+  
+      // Assume focal point is always [0, 0, 0]
+      const focalPoint = [0, 0, 0];
+      const distance = 500; // distance from focal point — you can tune this
+  
+      const cameraPosition = [
+        focalPoint[0] - viewVector[0] * distance,
+        focalPoint[1] - viewVector[1] * distance,
+        focalPoint[2] - viewVector[2] * distance,
+      ];
+
+      console.log(`cameraPosition`, cameraPosition)
+      console.log(`current position`, camera.getPosition())
+  
+      camera.setPosition(...cameraPosition);
+      console.log(`new position`, camera.getPosition())
+      camera.setFocalPoint(...focalPoint);
+      camera.setViewUp(0, 1, 0); // could be improved if you want precise control
+      console.log(`final position`, camera.getPosition())
+      camera.modified();
+  
+      renderer.resetCameraClippingRange();
+      renderWindow.render();
+    }
+  }, [selectedAnnotation]);
+  
+
   return (
     <div>
       <div ref={vtkContainerRef} />
@@ -366,22 +402,6 @@ function VTKVisualizer({ fileName, onViewDataChange }) {
           height: "auto",
         }}
       />
-      {/* <div
-        ref={viewInfoRef}
-        className="p-4 bg-black bg-opacity-60 text-white rounded-lg shadow-md"
-        style={{
-          position: "absolute",
-          padding: '8px',
-          bottom: "0px",
-          zIndex: 1000,
-          color: 'white',
-          lineHeight: '0.2',
-        }}
-      >
-        <p>Viewing Vector: ({viewData.viewVector[0].toFixed(2)}, {viewData.viewVector[1].toFixed(2)}, {viewData.viewVector[2].toFixed(2)})</p>
-        <p>RAO: {viewData.rao}°</p>
-        <p>CRAN: {viewData.cran}°</p>
-      </div> */}
     </div>  
   );
 }

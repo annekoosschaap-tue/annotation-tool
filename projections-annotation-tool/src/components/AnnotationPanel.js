@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from "./../config";
 
-export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount }) => {
+export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount, onAnnotationSelect }) => {
   const [annotations, setAnnotations] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [newNote, setNewNote] = useState('');
@@ -142,11 +142,14 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount }) 
               if (selectedIndex === idx) {
                 setSelectedIndex(null);
                 setSelectedNote('');
+                onAnnotationSelect(null);
               } else {
+                const selectedAnnotation = annotations[idx];
                 setSelectedIndex(idx);
-                setSelectedNote(annotations[idx].note);
+                setSelectedNote(selectedAnnotation.note);
+                onAnnotationSelect(selectedAnnotation.angle);
               }
-            }}
+            }}            
             style={{
               position: 'relative',
               cursor: 'pointer',
