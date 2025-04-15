@@ -9,6 +9,11 @@ function App() {
   const [dicomFiles, setDicomFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [annotationsMap, setAnnotationsMap] = useState({});
+  const [viewData, setViewData] = useState({
+    viewVector: [0, 0, 0],
+    rao: 0,
+    cran: 0
+  });
 
   // Load DICOM files
   useEffect(() => {
@@ -51,7 +56,7 @@ function App() {
         {dicomFiles.map(file => (
           <li
             key={file}
-            onClick={() => handleFileSelection(file)}
+            onClick={() => handleFileSelection(selectedFile === file ? null : file)}
             style={{
               cursor: 'pointer',
               padding: '6px 8px',
@@ -75,13 +80,13 @@ function App() {
 
       {/* Middle panel: 3D visualizer */}
       <div className="visualizer-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px', height: '100vh' }}>
-        {selectedFile && <VTKVisualizer fileName={selectedFile} />}
+        {selectedFile && <VTKVisualizer fileName={selectedFile} onViewDataChange={setViewData} />}
       </div>
 
       {/* Right panel: annotation panel */}
       <div className="annotation-panel" style={{ width: '20%', padding: '10px', overflowY: 'auto', borderLeft: '1px solid #ccc' }}>
         <h3>Annotations</h3>
-        {selectedFile && <AnnotationPanel fileName={selectedFile} />}
+        {selectedFile && <AnnotationPanel fileName={selectedFile} viewData={viewData} />}
       </div>
     </div>
   );

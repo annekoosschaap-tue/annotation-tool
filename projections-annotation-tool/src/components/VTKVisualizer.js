@@ -188,7 +188,7 @@ function computeRAOAndCRAN(viewDirection) {
 }
 
 
-function VTKVisualizer({ fileName }) {
+function VTKVisualizer({ fileName, onViewDataChange }) {
   const vtkContainerRef = useRef(null);
   const controllerContainerRef = useRef(null);
   const viewInfoRef = useRef(null);
@@ -313,12 +313,15 @@ function VTKVisualizer({ fileName }) {
       const updateAngles = () => {
         const { viewDirection } = getCameraViewAngles(renderer);
         const { rao, cran } = computeRAOAndCRAN(viewDirection);
-  
-        setViewData({
+
+        const newViewData = {
           viewVector: viewDirection,
           rao,
           cran,
-        });
+        };
+  
+        setViewData(newViewData);
+        if (onViewDataChange) onViewDataChange(newViewData);
       };
 
       updateAngles();
@@ -363,7 +366,7 @@ function VTKVisualizer({ fileName }) {
           height: "auto",
         }}
       />
-      <div
+      {/* <div
         ref={viewInfoRef}
         className="p-4 bg-black bg-opacity-60 text-white rounded-lg shadow-md"
         style={{
@@ -378,7 +381,7 @@ function VTKVisualizer({ fileName }) {
         <p>Viewing Vector: ({viewData.viewVector[0].toFixed(2)}, {viewData.viewVector[1].toFixed(2)}, {viewData.viewVector[2].toFixed(2)})</p>
         <p>RAO: {viewData.rao}°</p>
         <p>CRAN: {viewData.cran}°</p>
-      </div>
+      </div> */}
     </div>  
   );
 }
