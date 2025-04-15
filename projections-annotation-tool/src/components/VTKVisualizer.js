@@ -298,7 +298,7 @@ function VTKVisualizer({ fileName }) {
         });
         controllerWidget.setContainer(controllerContainerRef.current);
         controllerWidget.setupContent(renderWindow, volume);
-        controllerWidget.setExpanded(true);
+        controllerWidget.setExpanded(false);
       }
   
       const camera = renderer.getActiveCamera();
@@ -307,12 +307,12 @@ function VTKVisualizer({ fileName }) {
       camera.setViewUp(0, 1, 0);
       renderer.resetCamera();
       renderWindow.render();
+      // Trigger a dummy camera interaction to ensure listeners are active
+      camera.modified();
   
       const updateAngles = () => {
         const { viewDirection } = getCameraViewAngles(renderer);
         const { rao, cran } = computeRAOAndCRAN(viewDirection);
-
-        console.log('Angles are being updated:', { rao, cran });
   
         setViewData({
           viewVector: viewDirection,
@@ -327,21 +327,13 @@ function VTKVisualizer({ fileName }) {
         updateAngles();
       });
 
-      const interactionSubscription = interactor.onStartAnimation(() => {
-        console.log('Interaction started');
-      });
-
       const endInteractionSubscription = interactor.onEndAnimation(() => {
-        console.log('Interaction ended');
         updateAngles();
       });
   
       return () => {
         if (cameraSubscription && typeof cameraSubscription.unsubscribe === 'function') {
           cameraSubscription.unsubscribe();
-        }
-        if (interactionSubscription && typeof interactionSubscription.unsubscribe === 'function') {
-          interactionSubscription.unsubscribe();
         }
         if (endInteractionSubscription && typeof endInteractionSubscription.unsubscribe === 'function') {
           endInteractionSubscription.unsubscribe();
@@ -358,10 +350,6 @@ function VTKVisualizer({ fileName }) {
       renderWindow.render();
     }
   }, []);
-
-  useEffect(() => {
-    console.log('viewData updated:', viewData);
-  }, [viewData]);
 
   return (
     <div>

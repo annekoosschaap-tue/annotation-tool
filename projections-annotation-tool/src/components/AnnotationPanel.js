@@ -3,9 +3,8 @@ import axios from 'axios';
 import { API_BASE_URL } from "./../config";
 
 export const AnnotationPanel = ({ fileName }) => {
-  const currentAngles = useState(null);
   const [annotations, setAnnotations] = useState([]);
-  const [note, setNote] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(null);
 
   useEffect(() => {
     if (fileName) {
@@ -14,6 +13,7 @@ export const AnnotationPanel = ({ fileName }) => {
       })
       .then((response) => {
         setAnnotations(response.data.annotations || []);
+        setSelectedIndex(null); // Reset selection on new file
       })
       .catch((error) => {
         console.error("Failed to load annotations", error);
@@ -21,37 +21,17 @@ export const AnnotationPanel = ({ fileName }) => {
     }
   }, [fileName]);
 
-  const handleSaveAnnotation = () => {
-    if (!currentAngles.viewVector || currentAngles.rao === null || currentAngles.cran === null) {
-      alert("No valid angles to save.");
-      return;
-    }
-
-    const newAnnotation = {
-      viewVector: currentAngles.viewVector,
-      rao: currentAngles.rao,
-      cran: currentAngles.cran,
-      note: note || '',
-    };
-
-    axios.post(`${API_BASE_URL}/annotations/${fileName}`, newAnnotation, {
-      withCredentials: true,
-    })
-    .then(() => {
-      setAnnotations(prev => [...prev, newAnnotation]);
-      setNote('');
-    })
-    .catch((error) => {
-      console.error("Failed to save annotation", error);
-    });
-  };
-
   const handleDelete = (indexToDelete) => {
     axios.delete(`${API_BASE_URL}/annotations/${fileName}/${indexToDelete}`, {
       withCredentials: true,
     })
     .then(() => {
       setAnnotations((prev) => prev.filter((_, index) => index !== indexToDelete));
+      if (selectedIndex === indexToDelete) {
+        setSelectedIndex(null);
+      } else if (selectedIndex > indexToDelete) {
+        setSelectedIndex(selectedIndex - 1);
+      }
     })
     .catch((error) => {
       console.error("Failed to delete annotation", error);
@@ -60,29 +40,41 @@ export const AnnotationPanel = ({ fileName }) => {
 
   return (
     <div>
-      <div style={{ marginBottom: '1rem' }}>
-        <p><strong>RAO:</strong> {currentAngles.rao ?? 'N/A'}°</p>
-        <p><strong>CRAN:</strong> {currentAngles.cran ?? 'N/A'}°</p>
-        <p><strong>View Vector:</strong> {currentAngles.viewVector ? currentAngles.viewVector.map(v => v.toFixed(2)).join(', ') : 'N/A'}</p>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Add a note..."
-          style={{ width: '100%', marginTop: '10px' }}
-        />
-        <button onClick={handleSaveAnnotation} style={{ marginTop: '10px' }}>
-          Save Annotation
-        </button>
-      </div>
-
-      <h4>Saved Annotations</h4>
+      <h4>Annotation note</h4>
+      <textarea
+        value={selectedIndex !== null ? annotations[selectedIndex].note : ''}
+        readOnly
+        placeholder="Select an annotation to view its note..."
+        style={{ width: '100%', minHeight: '80px', marginTop: '10px' }}
+      />
+      
+      <h4>Saved projections</h4>
       {annotations.length === 0 && <p>No saved annotations.</p>}
-      <ul>
+
+      <ul style={{ listStyle: 'none', padding: 0 }}>
         {annotations.map((ann, idx) => (
-          <li key={idx} style={{ marginBottom: '0.5rem', borderBottom: '1px solid #ccc', paddingBottom: '0.5rem' }}>
+          <li
+            key={idx}
+            onClick={() => setSelectedIndex(idx)}
+            style={{
+              cursor: 'pointer',
+              border: '1px solid #ccc',
+              borderRadius: '6px',
+              padding: '10px',
+              marginBottom: '8px',
+              backgroundColor: selectedIndex === idx ? '#e0f7fa' : '#fff',
+              transition: 'background-color 0.2s',
+            }}
+          >
             <div><strong>RAO:</strong> {ann.rao}°, <strong>CRAN:</strong> {ann.cran}°</div>
             <div><strong>Note:</strong> {ann.note || '—'}</div>
-            <button onClick={() => handleDelete(idx)} style={{ marginTop: '5px' }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation(); // prevent selection on delete
+                handleDelete(idx);
+              }}
+              style={{ marginTop: '6px', fontSize: '0.9rem' }}
+            >
               Delete
             </button>
           </li>

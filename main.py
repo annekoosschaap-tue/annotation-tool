@@ -165,8 +165,17 @@ def save_annotation(data: dict, token: str = Depends(verify_token)):
 
     return {"message": "Annotation saved"}
 
+@app.get("/annotations")
+def get_all_annotations(token: str = Depends(verify_token)):
+    if os.path.exists("annotations.json"):
+        with open("annotations.json", "r") as f:
+            annotations = json.load(f)
+        print(annotations)
+        return {"annotations": annotations}
+    return {"annotations": []}
+
 @app.get("/annotations/{file_name}")
-def get_annotations(file_name: str, token: str = Depends(verify_token)):
+def get_annotations_by_filename(file_name: str, token: str = Depends(verify_token)):
     """Retrieve annotations for a specific DICOM file."""
     if os.path.exists("annotations.json"):
         with open("annotations.json", "r") as f:
