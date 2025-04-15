@@ -17,7 +17,7 @@ import { API_BASE_URL } from "./../config";
 
 async function fetchData(fileName) {
   try {
-    const response = await axios.get(`${API_BASE_URL}/get_dicom/${fileName}`, {
+    const response = await axios.get(`${API_BASE_URL}/dicom-files/${fileName}`, {
       responseType: 'arraybuffer',
       withCredentials: true,
       headers: {

@@ -60,7 +60,6 @@ async def set_token(request: Request, response: Response):
         return {"message": "Token set successfully"}
 
     except Exception as e:
-        print(e)
         raise HTTPException(status_code=500, detail=f"Error setting token: {str(e)}")
 
 
@@ -71,7 +70,7 @@ def get_dicom_files(token: str = Depends(verify_token)):
     return {"files": dicom_files}
 
 
-@app.get("/get_dicom/{file_name}")
+@app.get("/dicom-files/{file_name}")
 async def get_dicom(file_name: str, token: str = Depends(verify_token)):
     dicom_path = os.path.join(DICOM_DIR, file_name)
 
@@ -90,77 +89,24 @@ async def get_dicom(file_name: str, token: str = Depends(verify_token)):
         )
 
 
-@app.get("/get_3d_dicom/{file_name}")
-async def get_3d_dicom(file_name: str, token: str = Depends(verify_token)):
-    """Retrieve the 3D STL file for a DICOM scan."""
-    dicom_path = os.path.join(DICOM_DIR, file_name)
-
-    try:
-        ds = pydicom.dcmread(dicom_path)
-
-        if not hasattr(ds, "pixel_array"):
-            raise HTTPException(
-                status_code=400, detail="DICOM file does not contain pixel data."
-            )
-
-        pixel_array = ds.pixel_array
-
-        # Process the 3D data using PyVista
-        volume = pv.wrap(pixel_array)
-        threshold = np.percentile(pixel_array, 99.5)
-        thresholded_volume = volume.threshold(threshold)
-        surface = thresholded_volume.extract_geometry()
-
-        # Save STL file
-        folder = "tmp"
-        os.makedirs(folder, exist_ok=True)
-        stl_file = os.path.join(folder, f"output_model.stl")
-        surface.save(stl_file)
-
-        # Debug: Check if STL file is created
-        if not os.path.exists(stl_file) or os.path.getsize(stl_file) == 0:
-            raise HTTPException(status_code=500, detail="Generated STL file is empty.")
-
-        print(f"Serving STL file: {stl_file}")
-
-        return FileResponse(
-            stl_file,
-            media_type="application/octet-stream",
-            filename=f"output_model.stl",
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/annotations")
+def get_all_annotations(token: str = Depends(verify_token)):
+    if os.path.exists("annotations.json"):
+        with open("annotations.json", "r") as f:
+            annotations = json.load(f)
+        return {"annotations": annotations}
+    return {"annotations": []}
 
 
-@app.get("/get_3d_array/{file_name}")
-async def get_3d_array(file_name: str, token: str = Depends(verify_token)):
-    """Retrieve and send the 3D pixel array data for a DICOM scan."""
-    dicom_path = os.path.join(DICOM_DIR, file_name)
-
-    try:
-        ds = pydicom.dcmread(dicom_path)
-
-        if not hasattr(ds, "pixel_array"):
-            raise HTTPException(
-                status_code=400, detail="DICOM file does not contain pixel data."
-            )
-
-        pixel_array = ds.pixel_array
-        encoded_pixel_array = base64.b64encode(
-            pixel_array.astype(np.uint16).tobytes(order="C")
-        ).decode("utf-8")
-
-        return JSONResponse(
-            content={
-                "pixel_array": encoded_pixel_array,
-                "shape": list(pixel_array.shape),
-            }
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+@app.get("/annotations/{file_name}")
+def get_annotations_by_filename(file_name: str, token: str = Depends(verify_token)):
+    """Retrieve annotations for a specific DICOM file."""
+    if os.path.exists("annotations.json"):
+        with open("annotations.json", "r") as f:
+            annotations = json.load(f)
+        return {"annotations": annotations.get(file_name, [])}
+    return {"annotations": []}
+   
 
 @app.post("/annotations/{selected_file}")
 def save_annotation(selected_file: str, data: dict, token: str = Depends(verify_token)):
@@ -292,29 +238,6 @@ def delete_annotation(
         )
 
     return {"message": "Annotation deleted successfully"}
-
-
-@app.get("/annotations")
-def get_all_annotations(token: str = Depends(verify_token)):
-    if os.path.exists("annotations.json"):
-        with open("annotations.json", "r") as f:
-            annotations = json.load(f)
-        print(annotations)
-        return {"annotations": annotations}
-    return {"annotations": []}
-
-
-@app.get("/annotations/{file_name}")
-def get_annotations_by_filename(file_name: str, token: str = Depends(verify_token)):
-    """Retrieve annotations for a specific DICOM file."""
-    if os.path.exists("annotations.json"):
-        with open("annotations.json", "r") as f:
-            annotations = json.load(f)
-        print(annotations)
-        print(file_name)
-        print(annotations.get(file_name, []))
-        return {"annotations": annotations.get(file_name, [])}
-    return {"annotations": []}
 
 
 if __name__ == "__main__":
