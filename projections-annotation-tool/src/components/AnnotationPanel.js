@@ -148,26 +148,36 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount }) 
               }
             }}
             style={{
+              position: 'relative',
               cursor: 'pointer',
               border: '1px solid #ccc',
               borderRadius: '6px',
-              padding: '10px',
+              padding: '10px 30px 10px 10px',
               marginBottom: '8px',
               backgroundColor: selectedIndex === idx ? '#e0f7fa' : '#fff',
               transition: 'background-color 0.2s',
             }}
           >
-            <div><strong>RAO:</strong> {ann.angle?.rao ?? '—'}°, <strong>CRAN:</strong> {ann.angle?.cran ?? '—'}°</div>
-            <div><strong>Note:</strong> {ann.note || '—'}</div>
-            <button
+            <div style={{
+              position: 'absolute',
+              top: '8px',
+              right: '10px',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              color: '#888',
+              cursor: 'pointer',
+              lineHeight: '1',
+            }}
               onClick={(e) => {
                 e.stopPropagation();
                 handleDelete(idx);
               }}
-              style={{ marginTop: '6px', fontSize: '0.9rem' }}
+              title="Delete"
             >
-              Delete
-            </button>
+              &times;
+            </div>
+            <div><strong>RAO:</strong> {ann.angle?.rao ?? '—'}°, <strong>CRAN:</strong> {ann.angle?.cran ?? '—'}°</div>
+            <div><strong>Note:</strong> {ann.note || '—'}</div>
           </li>
         ))}
       </ul>
