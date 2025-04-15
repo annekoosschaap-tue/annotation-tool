@@ -18,13 +18,13 @@ import { API_BASE_URL } from "./../config";
 async function fetchData(fileName) {
   try {
     const response = await axios.get(`${API_BASE_URL}/get_dicom/${fileName}`, {
-      responseType: 'arraybuffer', // Ensure you're getting the raw binary data
+      responseType: 'arraybuffer',
       withCredentials: true,
       headers: {
         "Content-Type": "application/json",
       },
     });
-    return response.data; // This should now be a binary ArrayBuffer
+    return response.data; 
   } catch (error) {
     console.error("Error fetching DICOM data:", error);
     return null;
@@ -35,10 +35,9 @@ function findTag(dataSet, tag) {
   if (!dataSet || !dataSet.elements) return null;
   
   if (dataSet.elements[tag]) {
-      return dataSet.string(tag);  // Found at top level
+      return dataSet.string(tag);
   }
   
-  // Search in sequences
   for (const key in dataSet.elements) {
       const element = dataSet.elements[key];
       if (element.items) {
@@ -52,7 +51,7 @@ function findTag(dataSet, tag) {
 }
 
 function parseDicom(dicomData) {
-  const byteArray = new Uint8Array(dicomData); // Convert to byte array
+  const byteArray = new Uint8Array(dicomData); 
 
   try {
     const dataSet = dicomParser.parseDicom(byteArray); // Parse the DICOM data
@@ -76,13 +75,7 @@ function parseDicom(dicomData) {
     }
 
     let pixelData;
-    if (dataSet.elements.x7fe00010.encapsulated) {
-      // Encapsulated (JPEG, JPEG2000, etc.)
-      pixelData = dicomParser.readEncapsulatedPixelData(dataSet, pixelDataElement, 0);
-    } else {
-      // Uncompressed (RAW)
-      pixelData = dataSet.byteArray.slice(pixelDataElement.dataOffset, pixelDataElement.dataOffset + pixelDataElement.length);
-    }
+    pixelData = dataSet.byteArray.slice(pixelDataElement.dataOffset, pixelDataElement.dataOffset + pixelDataElement.length);
     
     return {
       pixel_array: pixelData,
@@ -308,6 +301,10 @@ function VTKVisualizer({ fileName }) {
         controllerWidget.setExpanded(true);
       }
   
+      const camera = renderer.getActiveCamera();
+      camera.setPosition(0, 0, 1);  
+      camera.setFocalPoint(0, 0, 0);
+      camera.setViewUp(0, 1, 0);
       renderer.resetCamera();
       renderWindow.render();
   
@@ -326,8 +323,6 @@ function VTKVisualizer({ fileName }) {
 
       updateAngles();
   
-      const camera = renderer.getActiveCamera();
-
       const cameraSubscription = camera.onModified(() => {
         updateAngles();
       });
