@@ -2,60 +2,182 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from "./../config";
 
-export const AnnotationPanel = ({ fileName, token }) => {
-  const [angle, setAngle] = useState('');
-  const [note, setNote] = useState('');
+export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount }) => {
   const [annotations, setAnnotations] = useState([]);
+  const [selectedIndex, setSelectedIndex] = useState(null);
+  const [newNote, setNewNote] = useState('');
+  const [selectedNote, setSelectedNote] = useState('');
 
-  // Fetch existing annotations for the file on component mount
-  useEffect(() => {
+  const fetchAnnotations = () => {
+    if (!fileName) return;
     axios.get(`${API_BASE_URL}/annotations/${fileName}`, {
-      withCredentials: true,  
-      headers: {
-        "Content-Type": "application/json",
-      },
+      withCredentials: true,
     })
-      .then(response => {
-        setAnnotations(response.data.annotations);
+      .then((response) => {
+        setAnnotations(response.data.annotations || []);
+        setSelectedIndex(null);
       })
-      .catch(error => {
-        console.error('There was an error fetching annotations:', error);
+      .catch((error) => {
+        console.error("Failed to load annotations", error);
       });
+  };
+
+  useEffect(() => {
+    fetchAnnotations();
   }, [fileName]);
 
-  const handleSave = () => {
-    console.log(token)
-    axios.post(
-      `${API_BASE_URL}/save-annotation`, 
-      { file_name: fileName, angle: angle, note: note },
-      { withCredentials: true }
-    ).then(response => {
-      setAnnotations(prevAnnotations => [...prevAnnotations, { angle, note }]);
-    });
+  const handleDelete = (indexToDelete) => {
+    axios.delete(`${API_BASE_URL}/annotations/${fileName}/${indexToDelete}`, {
+      withCredentials: true,
+    })
+      .then(() => {
+        fetchAnnotations();
+        updateAnnotationsCount();
+      })
+      .catch((error) => {
+        console.error("Failed to delete annotation", error);
+      });
+  };
+
+  const handleUpdate = () => {
+    if (selectedIndex === null) return;
+
+    axios.put(`${API_BASE_URL}/annotations/${fileName}/${selectedIndex}`, {
+      angle: {
+        rao: viewData.rao,
+        cran: viewData.cran,
+        viewVector: viewData.viewVector
+      },
+      note: selectedNote,
+    }, {
+      withCredentials: true,
+    })
+      .then(() => {
+        fetchAnnotations();
+        updateAnnotationsCount();
+      })
+      .catch((err) => console.error("Failed to update annotation", err));
+  };
+
+  const handleSaveNew = () => {
+    const newAnnotation = {
+      angle: {
+        rao: viewData.rao,
+        cran: viewData.cran,
+        viewVector: viewData.viewVector
+      },
+      note: newNote
+    };
+    axios.post(`${API_BASE_URL}/annotations/${fileName}`, newAnnotation, {
+      withCredentials: true,
+    })
+      .then(() => {
+        setNewNote('');
+        fetchAnnotations();
+        updateAnnotationsCount();
+      })
+      .catch((err) => console.error("Failed to save new annotation", err));
   };
 
   return (
     <div>
-      <input
-        type="text"
-        value={angle}
-        onChange={(e) => setAngle(e.target.value)}
-        placeholder="Viewing Angle"
-      />
-      <input
-        type="text"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder="Note"
-      />
-      <button onClick={handleSave}>Save Annotation</button>
+      <h4>Current projection</h4>
+      <p>Viewing Vector: ({viewData.viewVector.map(v => v.toFixed(2)).join(', ')})</p>
+      <p>RAO: {viewData.rao}°</p>
+      <p>CRAN: {viewData.cran}°</p>
 
-      <h3>Saved Annotations:</h3>
-      <ul>
-        {annotations.map((annotation, index) => (
-          <li key={index}>
-            <strong>Angle:</strong> {annotation.angle} <br />
-            <strong>Note:</strong> {annotation.note}
+      <textarea
+        value={selectedIndex !== null ? selectedNote : newNote}
+        onChange={(e) => {
+          if (selectedIndex !== null) {
+            setSelectedNote(e.target.value);
+          } else {
+            setNewNote(e.target.value);
+          }
+        }}
+        placeholder="Add a note..."
+        style={{ width: '100%', minHeight: '80px', marginTop: '10px' }}
+      />
+
+      <div style={{ marginTop: '10px' }}>
+        <button
+          onClick={handleUpdate}
+          disabled={selectedIndex === null}
+          style={{
+            marginRight: '10px',
+            backgroundColor: selectedIndex === null ? '#ccc' : '#007bff',
+            color: 'white',
+            padding: '8px 12px',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: selectedIndex === null ? 'default' : 'pointer'
+          }}
+        >
+          Update annotation
+        </button>
+
+        <button
+          onClick={handleSaveNew}
+          style={{
+            backgroundColor: '#28a745',
+            color: 'white',
+            padding: '8px 12px',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Save new annotation
+        </button>
+      </div>
+
+      <h4 style={{ marginTop: '20px' }}>Saved projections</h4>
+      {annotations.length === 0 && <p>No saved annotations.</p>}
+
+      <ul style={{ listStyle: 'none', padding: 0 }}>
+        {annotations.map((ann, idx) => (
+          <li
+            key={idx}
+            onClick={() => {
+              if (selectedIndex === idx) {
+                setSelectedIndex(null);
+                setSelectedNote('');
+              } else {
+                setSelectedIndex(idx);
+                setSelectedNote(annotations[idx].note);
+              }
+            }}
+            style={{
+              position: 'relative',
+              cursor: 'pointer',
+              border: '1px solid #ccc',
+              borderRadius: '6px',
+              padding: '10px 30px 10px 10px',
+              marginBottom: '8px',
+              backgroundColor: selectedIndex === idx ? '#e0f7fa' : '#fff',
+              transition: 'background-color 0.2s',
+            }}
+          >
+            <div style={{
+              position: 'absolute',
+              top: '8px',
+              right: '10px',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              color: '#888',
+              cursor: 'pointer',
+              lineHeight: '1',
+            }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(idx);
+              }}
+              title="Delete"
+            >
+              &times;
+            </div>
+            <div><strong>RAO:</strong> {ann.angle?.rao ?? '—'}°, <strong>CRAN:</strong> {ann.angle?.cran ?? '—'}°</div>
+            <div><strong>Note:</strong> {ann.note || '—'}</div>
           </li>
         ))}
       </ul>

@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import _ from 'lodash';
 import axios from 'axios';
 import dicomParser from 'dicom-parser';
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
@@ -16,14 +17,14 @@ import { API_BASE_URL } from "./../config";
 
 async function fetchData(fileName) {
   try {
-    const response = await axios.get(`${API_BASE_URL}/get_dicom/${fileName}`, {
-      responseType: 'arraybuffer', // Ensure you're getting the raw binary data
+    const response = await axios.get(`${API_BASE_URL}/dicom-files/${fileName}`, {
+      responseType: 'arraybuffer',
       withCredentials: true,
       headers: {
         "Content-Type": "application/json",
       },
     });
-    return response.data; // This should now be a binary ArrayBuffer
+    return response.data; 
   } catch (error) {
     console.error("Error fetching DICOM data:", error);
     return null;
@@ -34,10 +35,9 @@ function findTag(dataSet, tag) {
   if (!dataSet || !dataSet.elements) return null;
   
   if (dataSet.elements[tag]) {
-      return dataSet.string(tag);  // Found at top level
+      return dataSet.string(tag);
   }
   
-  // Search in sequences
   for (const key in dataSet.elements) {
       const element = dataSet.elements[key];
       if (element.items) {
@@ -51,51 +51,31 @@ function findTag(dataSet, tag) {
 }
 
 function parseDicom(dicomData) {
-  const byteArray = new Uint8Array(dicomData); // Convert to byte array
+  const byteArray = new Uint8Array(dicomData); 
 
-  console.log('byteArray', byteArray)
   try {
     const dataSet = dicomParser.parseDicom(byteArray); // Parse the DICOM data
-    console.log('dataset', dataSet)
     // Extract metadata and pixel data
     const rows = dataSet.uint16('x00280010');
-    console.log('rows', rows)
     const columns = dataSet.uint16('x00280011');
-    console.log('columns', columns)
-
     const numberOfFrames = findTag(dataSet, 'x00280008');
-    console.log('numberofslices', numberOfFrames)
     const pixelSpacingStr = dataSet.string('x00280030');
-    console.log('pixelspacing', pixelSpacingStr)
     const spacing = pixelSpacingStr ? pixelSpacingStr.split('\\').map(parseFloat) : [1.0, 1.0]; 
     spacing.push(1.0);
-    console.log('spacing', spacing)
 
     const iopStr = findTag(dataSet, 'x00200037')
-    console.log('iopStr', iopStr);
-    const iop = iopStr ? iopStr.split('\\').map(parseFloat) : [1, 0, 0, 0, 1, 0]; 
-    console.log('iop', iop);
+    const iop = iopStr ? iopStr.split('\\').map(parseFloat) : [1, 0, 0, 0, 1, 0];
 
     const ippStr = findTag(dataSet, 'x00200032');
-    console.log('ippStr', ippStr);
     const ipp = ippStr ? ippStr.split('\\').map(parseFloat) : [0, 0, 0];
-    console.log('ipp', ipp);
 
     const pixelDataElement = dataSet.elements.x7fe00010;
-    console.log('pixeldataelement', pixelDataElement)
     if (!pixelDataElement) {
       throw new Error("No pixel data found in the DICOM file.");
     }
 
     let pixelData;
-    if (dataSet.elements.x7fe00010.encapsulated) {
-      // Encapsulated (JPEG, JPEG2000, etc.)
-      pixelData = dicomParser.readEncapsulatedPixelData(dataSet, pixelDataElement, 0);
-    } else {
-      // Uncompressed (RAW)
-      pixelData = dataSet.byteArray.slice(pixelDataElement.dataOffset, pixelDataElement.dataOffset + pixelDataElement.length);
-    }
-    console.log('pixeldata', pixelData)
+    pixelData = dataSet.byteArray.slice(pixelDataElement.dataOffset, pixelDataElement.dataOffset + pixelDataElement.length);
     
     return {
       pixel_array: pixelData,
@@ -129,30 +109,19 @@ function computeDirectionMatrix(iop) {
 }
 
 function createVTKImageData(parsedData) {
-  console.log('Create VTK image');
   if (!parsedData || !parsedData.pixel_array || parsedData.pixel_array.length === 0) {
     console.error("Invalid pixel array: ", parsedData.pixel_array);
     return null;
   }
   const imageData = vtkImageData.newInstance();
-  console.log(parsedData)
   const { pixel_array, shape, spacing, iop, ipp } = parsedData;
 
-  console.log('shape', shape)
   imageData.setDimensions(shape[0], shape[1], shape[2]);
-  console.log('dimensions', imageData.getDimensions())
-
   imageData.setSpacing(spacing[0], spacing[1], spacing[2]);
-  console.log('spacing', imageData.getSpacing())
-
   imageData.setOrigin(ipp[0], ipp[1], ipp[2]);
-  console.log('origin', imageData.getOrigin())
 
   const directionMatrix = computeDirectionMatrix(iop);  
   imageData.setDirection(directionMatrix.flat());
-  // console.log('directionMatrix', imageData.getDirection());
-
-  console.log('pixel_array.length', pixel_array.length)
 
   try {
     // Determine bytes per pixel
@@ -181,19 +150,69 @@ function createVTKImageData(parsedData) {
   }
 }
 
+function getCameraViewAngles(renderer) {
+  const camera = renderer.getActiveCamera();
+  const position = camera.getPosition();
+  const focalPoint = camera.getFocalPoint();
+  const viewUp = camera.getViewUp();
 
-function VTKVisualizer({ fileName }) {
+  // Calculate view direction vector
+  const viewDirection = [
+    focalPoint[0] - position[0],
+    focalPoint[1] - position[1],
+    focalPoint[2] - position[2],
+  ];
+
+  const norm = Math.sqrt(viewDirection.reduce((sum, val) => sum + val * val, 0));
+  const normalizedDirection = viewDirection.map(val => val / norm);
+
+  return {
+    position,
+    focalPoint,
+    viewUp,
+    viewDirection: normalizedDirection,
+  };
+}
+
+function computeRAOAndCRAN(viewDirection) {
+  const [x, y, z] = viewDirection;
+
+  // Compute RAO and CRAN in degrees
+  const rao = Math.atan2(x, z) * (180 / Math.PI);    // rotation around Y
+  const cran = Math.atan2(y, z) * (180 / Math.PI);   // rotation around X
+
+  return {
+    rao: parseFloat(rao.toFixed(1)),
+    cran: parseFloat(cran.toFixed(1))
+  };
+}
+
+
+function VTKVisualizer({ fileName, onViewDataChange }) {
   const vtkContainerRef = useRef(null);
   const controllerContainerRef = useRef(null);
+  const viewInfoRef = useRef(null);
   const context = useRef(null);
   const [parsedData, setParsedData] = useState(null);
+  const [viewData, setViewData] = useState({
+    viewVector: [0, 0, 0],
+    rao: 0,
+    cran: 0
+  });
+
 
   useEffect(() => {
+    setViewData({
+      viewVector: [0, 0, 0],
+      rao: 0,
+      cran: 0
+    });
+
     const fetchAndRenderData = async () => {
       const dicomData = await fetchData(fileName);
       if (dicomData) {
-        const parsedData = parseDicom(dicomData); // Parse DICOM binary data
-        setParsedData(parsedData); // Set the parsed data
+        const parsedData = parseDicom(dicomData); 
+        setParsedData(parsedData); 
       }
     };
     fetchAndRenderData();
@@ -254,45 +273,75 @@ function VTKVisualizer({ fileName }) {
 
   useEffect(() => {
     if (parsedData && context.current) {
-      const { renderer, renderWindow } = context.current;
-
+      const { renderer, renderWindow, interactor } = context.current;
+  
       renderer.removeAllViewProps();
-
-      // Create new volume from loaded data
+  
       const imageData = createVTKImageData(parsedData);
-
-      // console.log("Direction after:", imageData.getDirection());
-      console.log('Origin after', imageData.getOrigin());
-      console.log('Shape after', imageData.getDimensions());
-      console.log('Spacing after', imageData.getSpacing());
-
+  
       const mapper = vtkVolumeMapper.newInstance();
       mapper.setInputData(imageData);
-
+      mapper.setMaximumSamplesPerRay(2000);
+  
       const volume = vtkVolume.newInstance();
       volume.setMapper(mapper);
-
+  
       renderer.addVolume(volume);
-
+  
       if (controllerContainerRef.current) {
         while (controllerContainerRef.current.firstChild) {
           controllerContainerRef.current.removeChild(controllerContainerRef.current.firstChild);
         }
-
+  
         const controllerWidget = vtkVolumeController.newInstance({
           size: [400, 150],
         });
         controllerWidget.setContainer(controllerContainerRef.current);
         controllerWidget.setupContent(renderWindow, volume);
-        controllerWidget.setExpanded(true);
+        controllerWidget.setExpanded(false);
       }
-
-      // const camera = renderer.getActiveCamera();
-      // camera.setPosition(0, -1, 0);
-      // camera.setFocalPoint(0, 0, 0);
-      // camera.setViewUp(0, 0, -1);  // Ensures the top of the image is correct
+  
+      const camera = renderer.getActiveCamera();
+      camera.setPosition(0, 0, 1);  
+      camera.setFocalPoint(0, 0, 0);
+      camera.setViewUp(0, 1, 0);
       renderer.resetCamera();
       renderWindow.render();
+      // Trigger a dummy camera interaction to ensure listeners are active
+      camera.modified();
+  
+      const updateAngles = () => {
+        const { viewDirection } = getCameraViewAngles(renderer);
+        const { rao, cran } = computeRAOAndCRAN(viewDirection);
+
+        const newViewData = {
+          viewVector: viewDirection,
+          rao,
+          cran,
+        };
+  
+        setViewData(newViewData);
+        if (onViewDataChange) onViewDataChange(newViewData);
+      };
+
+      updateAngles();
+  
+      const cameraSubscription = camera.onModified(() => {
+        updateAngles();
+      });
+
+      const endInteractionSubscription = interactor.onEndAnimation(() => {
+        updateAngles();
+      });
+  
+      return () => {
+        if (cameraSubscription && typeof cameraSubscription.unsubscribe === 'function') {
+          cameraSubscription.unsubscribe();
+        }
+        if (endInteractionSubscription && typeof endInteractionSubscription.unsubscribe === 'function') {
+          endInteractionSubscription.unsubscribe();
+        }
+      };
     }
   }, [parsedData]);
 
@@ -317,7 +366,23 @@ function VTKVisualizer({ fileName }) {
           height: "auto",
         }}
       />
-    </div>
+      {/* <div
+        ref={viewInfoRef}
+        className="p-4 bg-black bg-opacity-60 text-white rounded-lg shadow-md"
+        style={{
+          position: "absolute",
+          padding: '8px',
+          bottom: "0px",
+          zIndex: 1000,
+          color: 'white',
+          lineHeight: '0.2',
+        }}
+      >
+        <p>Viewing Vector: ({viewData.viewVector[0].toFixed(2)}, {viewData.viewVector[1].toFixed(2)}, {viewData.viewVector[2].toFixed(2)})</p>
+        <p>RAO: {viewData.rao}°</p>
+        <p>CRAN: {viewData.cran}°</p>
+      </div> */}
+    </div>  
   );
 }
 
