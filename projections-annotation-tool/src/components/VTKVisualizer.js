@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import _ from 'lodash';
 import axios from 'axios';
 import dicomParser from 'dicom-parser';
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
@@ -53,36 +54,23 @@ function findTag(dataSet, tag) {
 function parseDicom(dicomData) {
   const byteArray = new Uint8Array(dicomData); // Convert to byte array
 
-  console.log('byteArray', byteArray)
   try {
     const dataSet = dicomParser.parseDicom(byteArray); // Parse the DICOM data
-    console.log('dataset', dataSet)
     // Extract metadata and pixel data
     const rows = dataSet.uint16('x00280010');
-    console.log('rows', rows)
     const columns = dataSet.uint16('x00280011');
-    console.log('columns', columns)
-
     const numberOfFrames = findTag(dataSet, 'x00280008');
-    console.log('numberofslices', numberOfFrames)
     const pixelSpacingStr = dataSet.string('x00280030');
-    console.log('pixelspacing', pixelSpacingStr)
     const spacing = pixelSpacingStr ? pixelSpacingStr.split('\\').map(parseFloat) : [1.0, 1.0]; 
     spacing.push(1.0);
-    console.log('spacing', spacing)
 
     const iopStr = findTag(dataSet, 'x00200037')
-    console.log('iopStr', iopStr);
-    const iop = iopStr ? iopStr.split('\\').map(parseFloat) : [1, 0, 0, 0, 1, 0]; 
-    console.log('iop', iop);
+    const iop = iopStr ? iopStr.split('\\').map(parseFloat) : [1, 0, 0, 0, 1, 0];
 
     const ippStr = findTag(dataSet, 'x00200032');
-    console.log('ippStr', ippStr);
     const ipp = ippStr ? ippStr.split('\\').map(parseFloat) : [0, 0, 0];
-    console.log('ipp', ipp);
 
     const pixelDataElement = dataSet.elements.x7fe00010;
-    console.log('pixeldataelement', pixelDataElement)
     if (!pixelDataElement) {
       throw new Error("No pixel data found in the DICOM file.");
     }
@@ -95,7 +83,6 @@ function parseDicom(dicomData) {
       // Uncompressed (RAW)
       pixelData = dataSet.byteArray.slice(pixelDataElement.dataOffset, pixelDataElement.dataOffset + pixelDataElement.length);
     }
-    console.log('pixeldata', pixelData)
     
     return {
       pixel_array: pixelData,
@@ -129,30 +116,19 @@ function computeDirectionMatrix(iop) {
 }
 
 function createVTKImageData(parsedData) {
-  console.log('Create VTK image');
   if (!parsedData || !parsedData.pixel_array || parsedData.pixel_array.length === 0) {
     console.error("Invalid pixel array: ", parsedData.pixel_array);
     return null;
   }
   const imageData = vtkImageData.newInstance();
-  console.log(parsedData)
   const { pixel_array, shape, spacing, iop, ipp } = parsedData;
 
-  console.log('shape', shape)
   imageData.setDimensions(shape[0], shape[1], shape[2]);
-  console.log('dimensions', imageData.getDimensions())
-
   imageData.setSpacing(spacing[0], spacing[1], spacing[2]);
-  console.log('spacing', imageData.getSpacing())
-
   imageData.setOrigin(ipp[0], ipp[1], ipp[2]);
-  console.log('origin', imageData.getOrigin())
 
   const directionMatrix = computeDirectionMatrix(iop);  
   imageData.setDirection(directionMatrix.flat());
-  // console.log('directionMatrix', imageData.getDirection());
-
-  console.log('pixel_array.length', pixel_array.length)
 
   try {
     // Determine bytes per pixel
@@ -181,19 +157,69 @@ function createVTKImageData(parsedData) {
   }
 }
 
+function getCameraViewAngles(renderer) {
+  const camera = renderer.getActiveCamera();
+  const position = camera.getPosition();
+  const focalPoint = camera.getFocalPoint();
+  const viewUp = camera.getViewUp();
+
+  // Calculate view direction vector
+  const viewDirection = [
+    focalPoint[0] - position[0],
+    focalPoint[1] - position[1],
+    focalPoint[2] - position[2],
+  ];
+
+  const norm = Math.sqrt(viewDirection.reduce((sum, val) => sum + val * val, 0));
+  const normalizedDirection = viewDirection.map(val => val / norm);
+
+  return {
+    position,
+    focalPoint,
+    viewUp,
+    viewDirection: normalizedDirection,
+  };
+}
+
+function computeRAOAndCRAN(viewDirection) {
+  const [x, y, z] = viewDirection;
+
+  // Compute RAO and CRAN in degrees
+  const rao = Math.atan2(x, z) * (180 / Math.PI);    // rotation around Y
+  const cran = Math.atan2(y, z) * (180 / Math.PI);   // rotation around X
+
+  return {
+    rao: parseFloat(rao.toFixed(1)),
+    cran: parseFloat(cran.toFixed(1))
+  };
+}
+
 
 function VTKVisualizer({ fileName }) {
   const vtkContainerRef = useRef(null);
   const controllerContainerRef = useRef(null);
+  const viewInfoRef = useRef(null);
   const context = useRef(null);
   const [parsedData, setParsedData] = useState(null);
+  const [viewData, setViewData] = useState({
+    viewVector: [0, 0, 0],
+    rao: 0,
+    cran: 0
+  });
+
 
   useEffect(() => {
+    setViewData({
+      viewVector: [0, 0, 0],
+      rao: 0,
+      cran: 0
+    });
+
     const fetchAndRenderData = async () => {
       const dicomData = await fetchData(fileName);
       if (dicomData) {
-        const parsedData = parseDicom(dicomData); // Parse DICOM binary data
-        setParsedData(parsedData); // Set the parsed data
+        const parsedData = parseDicom(dicomData); 
+        setParsedData(parsedData); 
       }
     };
     fetchAndRenderData();
@@ -254,31 +280,26 @@ function VTKVisualizer({ fileName }) {
 
   useEffect(() => {
     if (parsedData && context.current) {
-      const { renderer, renderWindow } = context.current;
-
+      const { renderer, renderWindow, interactor } = context.current;
+  
       renderer.removeAllViewProps();
-
-      // Create new volume from loaded data
+  
       const imageData = createVTKImageData(parsedData);
-
-      // console.log("Direction after:", imageData.getDirection());
-      console.log('Origin after', imageData.getOrigin());
-      console.log('Shape after', imageData.getDimensions());
-      console.log('Spacing after', imageData.getSpacing());
-
+  
       const mapper = vtkVolumeMapper.newInstance();
       mapper.setInputData(imageData);
-
+      mapper.setMaximumSamplesPerRay(2000);
+  
       const volume = vtkVolume.newInstance();
       volume.setMapper(mapper);
-
+  
       renderer.addVolume(volume);
-
+  
       if (controllerContainerRef.current) {
         while (controllerContainerRef.current.firstChild) {
           controllerContainerRef.current.removeChild(controllerContainerRef.current.firstChild);
         }
-
+  
         const controllerWidget = vtkVolumeController.newInstance({
           size: [400, 150],
         });
@@ -286,13 +307,51 @@ function VTKVisualizer({ fileName }) {
         controllerWidget.setupContent(renderWindow, volume);
         controllerWidget.setExpanded(true);
       }
-
-      // const camera = renderer.getActiveCamera();
-      // camera.setPosition(0, -1, 0);
-      // camera.setFocalPoint(0, 0, 0);
-      // camera.setViewUp(0, 0, -1);  // Ensures the top of the image is correct
+  
       renderer.resetCamera();
       renderWindow.render();
+  
+      const updateAngles = () => {
+        const { viewDirection } = getCameraViewAngles(renderer);
+        const { rao, cran } = computeRAOAndCRAN(viewDirection);
+
+        console.log('Angles are being updated:', { rao, cran });
+  
+        setViewData({
+          viewVector: viewDirection,
+          rao,
+          cran,
+        });
+      };
+
+      updateAngles();
+  
+      const camera = renderer.getActiveCamera();
+
+      const cameraSubscription = camera.onModified(() => {
+        updateAngles();
+      });
+
+      const interactionSubscription = interactor.onStartAnimation(() => {
+        console.log('Interaction started');
+      });
+
+      const endInteractionSubscription = interactor.onEndAnimation(() => {
+        console.log('Interaction ended');
+        updateAngles();
+      });
+  
+      return () => {
+        if (cameraSubscription && typeof cameraSubscription.unsubscribe === 'function') {
+          cameraSubscription.unsubscribe();
+        }
+        if (interactionSubscription && typeof interactionSubscription.unsubscribe === 'function') {
+          interactionSubscription.unsubscribe();
+        }
+        if (endInteractionSubscription && typeof endInteractionSubscription.unsubscribe === 'function') {
+          endInteractionSubscription.unsubscribe();
+        }
+      };
     }
   }, [parsedData]);
 
@@ -304,6 +363,10 @@ function VTKVisualizer({ fileName }) {
       renderWindow.render();
     }
   }, []);
+
+  useEffect(() => {
+    console.log('viewData updated:', viewData);
+  }, [viewData]);
 
   return (
     <div>
@@ -317,7 +380,23 @@ function VTKVisualizer({ fileName }) {
           height: "auto",
         }}
       />
-    </div>
+      <div
+        ref={viewInfoRef}
+        className="p-4 bg-black bg-opacity-60 text-white rounded-lg shadow-md"
+        style={{
+          position: "absolute",
+          padding: '8px',
+          bottom: "0px",
+          zIndex: 1000,
+          color: 'white',
+          lineHeight: '0.2',
+        }}
+      >
+        <p>Viewing Vector: ({viewData.viewVector[0].toFixed(2)}, {viewData.viewVector[1].toFixed(2)}, {viewData.viewVector[2].toFixed(2)})</p>
+        <p>RAO: {viewData.rao}°</p>
+        <p>CRAN: {viewData.cran}°</p>
+      </div>
+    </div>  
   );
 }
 

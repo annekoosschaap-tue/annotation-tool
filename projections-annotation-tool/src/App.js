@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import _ from 'lodash';
 import axios from 'axios';
 import './App.css';
 import VTKVisualizer from './components/VTKVisualizer';
@@ -50,11 +51,15 @@ function App() {
         </ul>
       </div>
       <div className="visualizer-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px', height: '100vh' }}>
-        {selectedFile && <VTKVisualizer fileName={selectedFile} />}
+        {selectedFile && <VTKVisualizer
+          fileName={selectedFile}
+        />}
       </div>
       <div className="annotation-panel" style={{ width: '20%', padding: '10px', overflowY: 'auto', borderLeft: '1px solid #ccc' }}>
         <h3>Annotations</h3>
-        {selectedFile && <AnnotationPanel fileName={selectedFile} />}
+        {selectedFile && <AnnotationPanel
+          fileName={selectedFile}
+        />}
       </div>
     </div>
   );
