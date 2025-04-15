@@ -170,7 +170,7 @@ def save_annotation(selected_file: str, data: dict, token: str = Depends(verify_
 
     if not selected_file:
         raise HTTPException(status_code=400, detail="Missing file name")
-    
+
     if angle is None:
         raise HTTPException(status_code=400, detail="Missing angle in request body")
 
@@ -254,6 +254,44 @@ def update_annotation(
         )
 
     return {"message": "Annotation updated successfully"}
+
+
+@app.delete("/annotations/{file_name}/{annotation_index}")
+def delete_annotation(
+    file_name: str, annotation_index: int, token: str = Depends(verify_token)
+):
+    """Delete a specific annotation for a DICOM file."""
+    if not os.path.exists("annotations.json"):
+        raise HTTPException(status_code=404, detail="No annotations found")
+
+    try:
+        with open("annotations.json", "r") as f:
+            annotations = json.load(f)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Failed to parse annotations.json")
+
+    if file_name not in annotations:
+        raise HTTPException(status_code=404, detail="File not found in annotations")
+
+    if annotation_index < 0 or annotation_index >= len(annotations[file_name]):
+        raise HTTPException(status_code=404, detail="Annotation index out of range")
+
+    # Remove the annotation
+    del annotations[file_name][annotation_index]
+
+    # If the list is now empty, optionally remove the file key entirely
+    if not annotations[file_name]:
+        del annotations[file_name]
+
+    try:
+        with open("annotations.json", "w") as f:
+            json.dump(annotations, f, indent=2)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update annotations.json: {str(e)}"
+        )
+
+    return {"message": "Annotation deleted successfully"}
 
 
 @app.get("/annotations")

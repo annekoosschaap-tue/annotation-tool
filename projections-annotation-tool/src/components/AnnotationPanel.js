@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from "./../config";
 
-export const AnnotationPanel = ({ fileName, viewData }) => {
+export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount }) => {
   const [annotations, setAnnotations] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [newNote, setNewNote] = useState('');
@@ -32,6 +32,7 @@ export const AnnotationPanel = ({ fileName, viewData }) => {
     })
       .then(() => {
         fetchAnnotations();
+        updateAnnotationsCount();
       })
       .catch((error) => {
         console.error("Failed to delete annotation", error);
@@ -53,6 +54,7 @@ export const AnnotationPanel = ({ fileName, viewData }) => {
     })
       .then(() => {
         fetchAnnotations();
+        updateAnnotationsCount();
       })
       .catch((err) => console.error("Failed to update annotation", err));
   };
@@ -72,6 +74,7 @@ export const AnnotationPanel = ({ fileName, viewData }) => {
       .then(() => {
         setNewNote('');
         fetchAnnotations();
+        updateAnnotationsCount();
       })
       .catch((err) => console.error("Failed to save new annotation", err));
   };
