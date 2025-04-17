@@ -193,7 +193,7 @@ function computeRAOAndCRAN(viewDirection) {
 }
 
 
-function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation }) {
+function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation, resetTrigger }) {
   const vtkContainerRef = useRef(null);
   const controllerContainerRef = useRef(null);
   const context = useRef(null);
@@ -384,10 +384,24 @@ function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation }) {
       console.log(`final position`, camera.getPosition())
       camera.modified();
   
-      renderer.resetCameraClippingRange();
+      renderer.resetCamera();
       renderWindow.render();
     }
   }, [selectedAnnotation]);
+
+  useEffect(() => {
+    const { renderer, renderWindow } = context.current;
+    const camera = renderer.getActiveCamera();
+    if (!renderer || !camera || !renderWindow) return;
+  
+    // Reset to initial camera view (manual or default)
+    camera.setPosition(0, 0, 500);
+    camera.setFocalPoint(0, 0, 0);
+    camera.setViewUp(0, 1, 0);
+    
+    renderer.resetCamera()
+    renderWindow.render();
+  }, [resetTrigger]);
   
 
   return (
