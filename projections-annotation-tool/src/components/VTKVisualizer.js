@@ -90,24 +90,6 @@ function parseDicom(dicomData) {
   }
 }
 
-function computeDirectionMatrix(iop) {
-// Compute the normal vector as the cross product
-  const normal = [
-      iop[1] * iop[5] - iop[2] * iop[4],
-      iop[2] * iop[3] - iop[0] * iop[5],
-      iop[0] * iop[4] - iop[1] * iop[3]
-  ];
-
-  // Construct the direction matrix in column-major order (matching DICOM convention)
-  const directionMatrix = [
-      iop[0], iop[3], normal[0],
-      iop[1], iop[4], normal[1],
-      iop[2], iop[5], normal[2]
-  ];
-
-  return directionMatrix;
-}
-
 function createVTKImageData(parsedData) {
   if (!parsedData || !parsedData.pixel_array || parsedData.pixel_array.length === 0) {
     console.error("Invalid pixel array: ", parsedData.pixel_array);
@@ -119,9 +101,6 @@ function createVTKImageData(parsedData) {
   imageData.setDimensions(shape[0], shape[1], shape[2]);
   imageData.setSpacing(spacing[0], spacing[1], spacing[2]);
   imageData.setOrigin(ipp[0], ipp[1], ipp[2]);
-
-  const directionMatrix = computeDirectionMatrix(iop);  
-  imageData.setDirection(directionMatrix.flat());
 
   try {
     // Determine bytes per pixel
@@ -241,7 +220,7 @@ function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation, resetTr
       const interactorStyle = vtkInteractorStyleTrackballCamera.newInstance();
       interactor.setInteractorStyle(interactorStyle);
 
-      renderer.setBackground(0.1, 0.1, 0.1);
+      renderer.setBackground(0.9, 0.9, 0.9);
 
       context.current = { renderWindow, renderer, openGLRenderWindow, interactor };
       const { width, height } = document.querySelector(".visualizer-container")?.getBoundingClientRect();
@@ -306,9 +285,10 @@ function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation, resetTr
       }
   
       const camera = renderer.getActiveCamera();
-      camera.setPosition(0, 0, 1);  
+      camera.setPosition(0, 0, -1);
       camera.setFocalPoint(0, 0, 0);
-      camera.setViewUp(0, 1, 0);
+      camera.setViewUp(0, -1, 0);
+
       renderer.resetCamera();
       renderWindow.render();
       // Trigger a dummy camera interaction to ensure listeners are active
@@ -395,14 +375,12 @@ function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation, resetTr
     if (!renderer || !camera || !renderWindow) return;
   
     // Reset to initial camera view (manual or default)
-    camera.setPosition(0, 0, 500);
+    camera.setPosition(0, 0, -1);
     camera.setFocalPoint(0, 0, 0);
-    camera.setViewUp(0, 1, 0);
-    
+    camera.setViewUp(0, -1, 0);
     renderer.resetCamera()
     renderWindow.render();
   }, [resetTrigger]);
-  
 
   return (
     <div>

@@ -80,7 +80,6 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount, on
   };
 
   const handleReset = () => {
-    console.log("Reset view")
     onResetView();
   };
 
