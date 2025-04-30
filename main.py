@@ -1,14 +1,13 @@
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import Response
+from io import BytesIO
 from pydicom.filebase import DicomBytesIO
 from typing import Any, Dict
-import base64
 import os
 import json
 import pydicom
-import pyvista as pv
-import numpy as np
+import requests
 import uvicorn
 
 app = FastAPI()
@@ -24,10 +23,15 @@ app.add_middleware(
 
 DICOM_DIR = r"C:\Users\s149220\Documents\PhD\PhD\Datasets\Aneurisk_dicoms"
 
+datasetId = "1644ad24-cad9-4ca5-8840-74ceeb311cd6"
 
 async def verify_token(request: Request):
     token = request.cookies.get("Philips.CFI.AccessToken")
-    if not token or token != "test":  # Replace with actual verification logic
+    response = requests.get(
+        "https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets",
+        cookies={"Philips.CFI.AccessToken": token}
+    )
+    if not token or not response.ok: 
         raise HTTPException(status_code=401, detail="Invalid or missing token")
     return token
 
@@ -66,26 +70,55 @@ async def set_token(request: Request, response: Response):
 @app.get("/dicom-files")
 def get_dicom_files(token: str = Depends(verify_token)):
     """Return a list of available DICOM files."""
-    dicom_files = [f for f in os.listdir(DICOM_DIR) if f.endswith(".dcm")]
-    return {"files": dicom_files}
+    datasetId = "1644ad24-cad9-4ca5-8840-74ceeb311cd6"
+    response = requests.get(
+        f"https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets/{datasetId}/files",
+        cookies={"Philips.CFI.AccessToken": token}
+    )
+
+    if response.ok:
+        try:
+            data = response.json()
+            contents = data.get("Contents")
+            patient_ids = [os.path.splitext(item['Key'])[0] for item in contents if item.get('Key') and item['Key'].endswith('.dcm')]
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error reading patient list: {str(e)}"
+            )
+    else:
+        raise HTTPException(
+            status_code=500, detail=f"Error in the request to dwh: {response}"
+        )
+    files = {"files": patient_ids}
+    return files
 
 
 @app.get("/dicom-files/{file_name}")
 async def get_dicom(file_name: str, token: str = Depends(verify_token)):
-    dicom_path = os.path.join(DICOM_DIR, file_name)
+    datasetId = "1644ad24-cad9-4ca5-8840-74ceeb311cd6"
+    file_name = file_name + ".dcm"
 
-    if not os.path.exists(dicom_path):
-        raise HTTPException(status_code=404, detail="DICOM file not found")
+    response = requests.get(
+        f"https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets/{datasetId}/files/{file_name}2",
+        cookies={"Philips.CFI.AccessToken": token}
+    )
 
-    try:
-        dicom_data = pydicom.dcmread(dicom_path)
-        dicom_bytes = DicomBytesIO()
-        dicom_data.save_as(dicom_bytes)
-        dicom_bytes.seek(0)
-        return Response(content=dicom_bytes.read(), media_type="application/dicom")
-    except Exception as e:
+    if response.ok:
+        try:
+            with BytesIO(response.content) as stream:
+                dicom_data = pydicom.dcmread(stream, force=True)
+                dicom_bytes = DicomBytesIO()
+                dicom_data.save_as(dicom_bytes)
+                dicom_bytes.seek(0)
+            return Response(content=dicom_bytes.read(), media_type="application/dicom")
+        except Exception as e:
+            print(e)
+            raise HTTPException(
+                status_code=500, detail=f"Error reading DICOM file: {str(e)}"
+            )
+    else:
         raise HTTPException(
-            status_code=500, detail=f"Error reading DICOM file: {str(e)}"
+            status_code=500, detail=f"Error in the request to dwh: {response}"
         )
 
 

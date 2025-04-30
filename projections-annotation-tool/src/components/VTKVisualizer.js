@@ -90,24 +90,6 @@ function parseDicom(dicomData) {
   }
 }
 
-function computeDirectionMatrix(iop) {
-// Compute the normal vector as the cross product
-  const normal = [
-      iop[1] * iop[5] - iop[2] * iop[4],
-      iop[2] * iop[3] - iop[0] * iop[5],
-      iop[0] * iop[4] - iop[1] * iop[3]
-  ];
-
-  // Construct the direction matrix in column-major order (matching DICOM convention)
-  const directionMatrix = [
-      iop[0], iop[3], normal[0],
-      iop[1], iop[4], normal[1],
-      iop[2], iop[5], normal[2]
-  ];
-
-  return directionMatrix;
-}
-
 function createVTKImageData(parsedData) {
   if (!parsedData || !parsedData.pixel_array || parsedData.pixel_array.length === 0) {
     console.error("Invalid pixel array: ", parsedData.pixel_array);
@@ -119,9 +101,6 @@ function createVTKImageData(parsedData) {
   imageData.setDimensions(shape[0], shape[1], shape[2]);
   imageData.setSpacing(spacing[0], spacing[1], spacing[2]);
   imageData.setOrigin(ipp[0], ipp[1], ipp[2]);
-
-  const directionMatrix = computeDirectionMatrix(iop);  
-  imageData.setDirection(directionMatrix.flat());
 
   try {
     // Determine bytes per pixel
@@ -155,6 +134,7 @@ function getCameraViewAngles(renderer) {
   const position = camera.getPosition();
   const focalPoint = camera.getFocalPoint();
   const viewUp = camera.getViewUp();
+  console.log(`viewUp`, viewUp)
 
   // Calculate view direction vector
   const viewDirection = [
@@ -163,8 +143,12 @@ function getCameraViewAngles(renderer) {
     focalPoint[2] - position[2],
   ];
 
+  console.log(`viewDirection`, viewDirection)
+
   const norm = Math.sqrt(viewDirection.reduce((sum, val) => sum + val * val, 0));
+  console.log(`norm`, norm)
   const normalizedDirection = viewDirection.map(val => val / norm);
+  console.log(`normalizedDirection`, normalizedDirection)
 
   return {
     position,
@@ -188,10 +172,9 @@ function computeRAOAndCRAN(viewDirection) {
 }
 
 
-function VTKVisualizer({ fileName, onViewDataChange }) {
+function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation, resetTrigger }) {
   const vtkContainerRef = useRef(null);
   const controllerContainerRef = useRef(null);
-  const viewInfoRef = useRef(null);
   const context = useRef(null);
   const [parsedData, setParsedData] = useState(null);
   const [viewData, setViewData] = useState({
@@ -237,7 +220,7 @@ function VTKVisualizer({ fileName, onViewDataChange }) {
       const interactorStyle = vtkInteractorStyleTrackballCamera.newInstance();
       interactor.setInteractorStyle(interactorStyle);
 
-      renderer.setBackground(0.1, 0.1, 0.1);
+      renderer.setBackground(0.9, 0.9, 0.9);
 
       context.current = { renderWindow, renderer, openGLRenderWindow, interactor };
       const { width, height } = document.querySelector(".visualizer-container")?.getBoundingClientRect();
@@ -302,9 +285,10 @@ function VTKVisualizer({ fileName, onViewDataChange }) {
       }
   
       const camera = renderer.getActiveCamera();
-      camera.setPosition(0, 0, 1);  
+      camera.setPosition(0, 0, -1);
       camera.setFocalPoint(0, 0, 0);
-      camera.setViewUp(0, 1, 0);
+      camera.setViewUp(0, -1, 0);
+
       renderer.resetCamera();
       renderWindow.render();
       // Trigger a dummy camera interaction to ensure listeners are active
@@ -354,6 +338,50 @@ function VTKVisualizer({ fileName, onViewDataChange }) {
     }
   }, []);
 
+  useEffect(() => {
+    if (selectedAnnotation && context.current) {
+      const { viewVector } = selectedAnnotation;
+      const { renderer, renderWindow } = context.current;
+      const camera = renderer.getActiveCamera();
+  
+      // Assume focal point is always [0, 0, 0]
+      const focalPoint = [0, 0, 0];
+      const distance = 500; // distance from focal point — you can tune this
+  
+      const cameraPosition = [
+        focalPoint[0] - viewVector[0] * distance,
+        focalPoint[1] - viewVector[1] * distance,
+        focalPoint[2] - viewVector[2] * distance,
+      ];
+
+      console.log(`cameraPosition`, cameraPosition)
+      console.log(`current position`, camera.getPosition())
+  
+      camera.setPosition(...cameraPosition);
+      console.log(`new position`, camera.getPosition())
+      camera.setFocalPoint(...focalPoint);
+      camera.setViewUp(0, 1, 0); // could be improved if you want precise control
+      console.log(`final position`, camera.getPosition())
+      camera.modified();
+  
+      renderer.resetCamera();
+      renderWindow.render();
+    }
+  }, [selectedAnnotation]);
+
+  useEffect(() => {
+    const { renderer, renderWindow } = context.current;
+    const camera = renderer.getActiveCamera();
+    if (!renderer || !camera || !renderWindow) return;
+  
+    // Reset to initial camera view (manual or default)
+    camera.setPosition(0, 0, -1);
+    camera.setFocalPoint(0, 0, 0);
+    camera.setViewUp(0, -1, 0);
+    renderer.resetCamera()
+    renderWindow.render();
+  }, [resetTrigger]);
+
   return (
     <div>
       <div ref={vtkContainerRef} />
@@ -366,22 +394,6 @@ function VTKVisualizer({ fileName, onViewDataChange }) {
           height: "auto",
         }}
       />
-      {/* <div
-        ref={viewInfoRef}
-        className="p-4 bg-black bg-opacity-60 text-white rounded-lg shadow-md"
-        style={{
-          position: "absolute",
-          padding: '8px',
-          bottom: "0px",
-          zIndex: 1000,
-          color: 'white',
-          lineHeight: '0.2',
-        }}
-      >
-        <p>Viewing Vector: ({viewData.viewVector[0].toFixed(2)}, {viewData.viewVector[1].toFixed(2)}, {viewData.viewVector[2].toFixed(2)})</p>
-        <p>RAO: {viewData.rao}°</p>
-        <p>CRAN: {viewData.cran}°</p>
-      </div> */}
     </div>  
   );
 }

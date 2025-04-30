@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from "./../config";
 
-export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount }) => {
+export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount, onAnnotationSelect, onResetView }) => {
   const [annotations, setAnnotations] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [newNote, setNewNote] = useState('');
@@ -79,6 +79,10 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount }) 
       .catch((err) => console.error("Failed to save new annotation", err));
   };
 
+  const handleReset = () => {
+    onResetView();
+  };
+
   return (
     <div>
       <h4>Current projection</h4>
@@ -119,6 +123,8 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount }) 
         <button
           onClick={handleSaveNew}
           style={{
+            marginTop: '5px',
+            marginRight: '10px',
             backgroundColor: '#28a745',
             color: 'white',
             padding: '8px 12px',
@@ -128,6 +134,21 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount }) 
           }}
         >
           Save new annotation
+        </button>
+
+        <button
+          onClick={handleReset}
+          style={{
+            marginTop: '5px',
+            backgroundColor: '#bf212f',
+            color: 'white',
+            padding: '8px 12px',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Reset view
         </button>
       </div>
 
@@ -142,11 +163,14 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount }) 
               if (selectedIndex === idx) {
                 setSelectedIndex(null);
                 setSelectedNote('');
+                onAnnotationSelect(null);
               } else {
+                const selectedAnnotation = annotations[idx];
                 setSelectedIndex(idx);
-                setSelectedNote(annotations[idx].note);
+                setSelectedNote(selectedAnnotation.note);
+                onAnnotationSelect(selectedAnnotation.angle);
               }
-            }}
+            }}            
             style={{
               position: 'relative',
               cursor: 'pointer',
