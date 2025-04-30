@@ -1,16 +1,12 @@
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import Response
 from io import BytesIO
 from pydicom.filebase import DicomBytesIO
 from typing import Any, Dict
-from requests_toolbelt import MultipartDecoder
-import base64
 import os
 import json
 import pydicom
-import pyvista as pv
-import numpy as np
 import requests
 import uvicorn
 
@@ -74,31 +70,25 @@ async def set_token(request: Request, response: Response):
 @app.get("/dicom-files")
 def get_dicom_files(token: str = Depends(verify_token)):
     """Return a list of available DICOM files."""
-    dicom_files = []
-    offset_index = 0
-    while True:
-        print("Getting data for offset index:", offset_index)
-        response = requests.get(
-            f'https://datawarehouse.cfilab.philips.com/datawarehouse/{datasetId}/api/qido/studies?fuzzymatching=false&offset={offset_index}',
-            cookies={"Philips.CFI.AccessToken": token}
+    datasetId = "1644ad24-cad9-4ca5-8840-74ceeb311cd6"
+    response = requests.get(
+        f"https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets/{datasetId}/files",
+        cookies={"Philips.CFI.AccessToken": token}
+    )
+
+    if response.ok:
+        try:
+            data = response.json()
+            contents = data.get("Contents")
+            patient_ids = [os.path.splitext(item['Key'])[0] for item in contents if item.get('Key') and item['Key'].endswith('.dcm')]
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error reading patient list: {str(e)}"
+            )
+    else:
+        raise HTTPException(
+            status_code=500, detail=f"Error in the request to dwh: {response}"
         )
-        if response.ok:
-            try:
-                multipart = MultipartDecoder(response.content, response.headers['content-type'])
-                instance_index = 0
-                for part in multipart.parts:
-                    dicomdata = pydicom.dataset.Dataset.from_json(part.text)
-                    dicom_files.append(dicomdata)
-                    instance_index += 1
-                    offset_index += 1
-            except Exception as e:
-                print(f"Could not list datasets: {e}")
-                break
-        else:
-            print(response)
-            break
-    
-    patient_ids = [patient.PatientID for patient in dicom_files]
     files = {"files": patient_ids}
     return files
 
@@ -106,15 +96,13 @@ def get_dicom_files(token: str = Depends(verify_token)):
 @app.get("/dicom-files/{file_name}")
 async def get_dicom(file_name: str, token: str = Depends(verify_token)):
     datasetId = "1644ad24-cad9-4ca5-8840-74ceeb311cd6"
-    studyId = "1.2.826.0.1.3680043.2.1125.1.21345538175559251041642813996306777"
+    file_name = file_name + ".dcm"
 
-    session = requests.Session()
-    response = session.get(
-            f'https://datawarehouse.cfilab.philips.com/datawarehouse/{datasetId}/api/wado/studies/{studyId}',
-            headers = {
-                "Accept": 'multipart/related;type="application/dicom"'
-            },
-            cookies={"Philips.CFI.AccessToken": token})
+    response = requests.get(
+        f"https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets/{datasetId}/files/{file_name}2",
+        cookies={"Philips.CFI.AccessToken": token}
+    )
+
     if response.ok:
         try:
             with BytesIO(response.content) as stream:
@@ -124,9 +112,14 @@ async def get_dicom(file_name: str, token: str = Depends(verify_token)):
                 dicom_bytes.seek(0)
             return Response(content=dicom_bytes.read(), media_type="application/dicom")
         except Exception as e:
+            print(e)
             raise HTTPException(
                 status_code=500, detail=f"Error reading DICOM file: {str(e)}"
             )
+    else:
+        raise HTTPException(
+            status_code=500, detail=f"Error in the request to dwh: {response}"
+        )
 
 
 @app.get("/annotations")
