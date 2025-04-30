@@ -99,7 +99,7 @@ async def get_dicom(file_name: str, token: str = Depends(verify_token)):
     file_name = file_name + ".dcm"
 
     response = requests.get(
-        f"https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets/{datasetId}/files/{file_name}2",
+        f"https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets/{datasetId}/files/{file_name}",
         cookies={"Philips.CFI.AccessToken": token}
     )
 
