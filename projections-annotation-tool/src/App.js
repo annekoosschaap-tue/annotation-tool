@@ -26,24 +26,27 @@ function App() {
 
   // Load annotations for each patient
   useEffect(() => {
-    axios.get(`${API_BASE_URL}/annotations`, { withCredentials: true })
-      .then(res => {
-        const annotationsObj = res.data.annotations;
-        const counts = {};
+  axios.get(`${API_BASE_URL}/annotations`, { withCredentials: true })
+    .then(res => {
+      const annotationsList = res.data.annotations;
+      const counts = {};
 
-        for (const fileName in annotationsObj) {
-          if (annotationsObj.hasOwnProperty(fileName)) {
-            counts[fileName] = annotationsObj[fileName].length;
-          }
+      for (const annotation of annotationsList) {
+        const fileName = annotation.patient_id;
+        if (counts[fileName]) {
+          counts[fileName] += 1;
+        } else {
+          counts[fileName] = 1;
         }
+      }
 
-        setAnnotationsMap(counts);
-      })
-      .catch(err => {
-        console.error("Failed to fetch annotations", err);
-        setAnnotationsMap({});
-      });
-  }, []);
+      setAnnotationsMap(counts);
+    })
+    .catch(err => {
+      console.error("Failed to fetch annotations", err);
+      setAnnotationsMap({});
+    });
+}, []);
 
   const handleFileSelection = (fileName) => {
     setSelectedFile(fileName);

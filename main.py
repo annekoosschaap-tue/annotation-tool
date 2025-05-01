@@ -2,7 +2,9 @@ from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from io import BytesIO
+from dotenv import load_dotenv
 from pydicom.filebase import DicomBytesIO
+from supabase import create_client
 from typing import Any, Dict
 import os
 import json
@@ -10,9 +12,9 @@ import pydicom
 import requests
 import uvicorn
 
+# Set up middleware for the API endpoints
 app = FastAPI()
 
-# Allow frontend to communicate with FastAPI
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "https://annekoosschaap-tue.github.io"],
@@ -21,38 +23,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DICOM_DIR = r"C:\Users\s149220\Documents\PhD\PhD\Datasets\Aneurisk_dicoms"
+# Set up connection to Supabase database
+load_dotenv()
 
-datasetId = "1644ad24-cad9-4ca5-8840-74ceeb311cd6"
+supabase_url = os.getenv("EXPO_PUBLIC_SUPABASE_URL")
+supabase_key = os.getenv("EXPO_PUBLIC_SUPABASE_ANON_KEY")
+
+supabase = create_client(supabase_url, supabase_key)
+
+# Load default value
+datasetId = os.getenv("DATASET_ID")
+dwhUrl = os.getenv("DATAWAREHOUSE_URL")
+
 
 async def verify_token(request: Request):
+    """Check whether the provided token is a valid token."""
     token = request.cookies.get("Philips.CFI.AccessToken")
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing token")
+
     response = requests.get(
-        "https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets",
-        cookies={"Philips.CFI.AccessToken": token}
-    )
-    if not token or not response.ok: 
-        raise HTTPException(status_code=401, detail="Invalid or missing token")
+        f"{dwhUrl}/api/datasets", cookies={"Philips.CFI.AccessToken": token}
+    )  # TODO: Change this to the usr
+
+    if not response.ok:
+        raise HTTPException(status_code=401, detail="Invalid token")
     return token
-
-
-# Function to load DICOM data
-def load_dicom(file_path):
-    try:
-        dicom_data = pydicom.dcmread(file_path)
-        return dicom_data
-    except Exception as e:
-        raise HTTPException(status_code=404, detail="DICOM file not found")
 
 
 @app.post("/set-token")
 async def set_token(request: Request, response: Response):
-    """Receive a token from the frontend and store it in cookies."""
+    """Receive a token from the frontend, verify it, and store it in cookies."""
     try:
-        body = await request.json()  # Read JSON body from request
+        body = await request.json()
         token = body.get("token")
+
         if not token:
             raise HTTPException(status_code=400, detail="Token is required")
+
+        verify_response = requests.get(
+            f"{dwhUrl}/api/datasets", cookies={"Philips.CFI.AccessToken": token}
+        )
+        if not verify_response.ok:
+            raise HTTPException(status_code=401, detail="Invalid token provided")
 
         response.set_cookie(
             key="Philips.CFI.AccessToken",
@@ -70,17 +84,20 @@ async def set_token(request: Request, response: Response):
 @app.get("/dicom-files")
 def get_dicom_files(token: str = Depends(verify_token)):
     """Return a list of available DICOM files."""
-    datasetId = "1644ad24-cad9-4ca5-8840-74ceeb311cd6"
     response = requests.get(
-        f"https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets/{datasetId}/files",
-        cookies={"Philips.CFI.AccessToken": token}
+        f"{dwhUrl}/api/datasets/{datasetId}/files",
+        cookies={"Philips.CFI.AccessToken": token},
     )
 
     if response.ok:
         try:
             data = response.json()
             contents = data.get("Contents")
-            patient_ids = [os.path.splitext(item['Key'])[0] for item in contents if item.get('Key') and item['Key'].endswith('.dcm')]
+            patient_ids = [
+                os.path.splitext(item["Key"])[0]
+                for item in contents
+                if item.get("Key") and item["Key"].endswith(".dcm")
+            ]
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error reading patient list: {str(e)}"
@@ -95,12 +112,12 @@ def get_dicom_files(token: str = Depends(verify_token)):
 
 @app.get("/dicom-files/{file_name}")
 async def get_dicom(file_name: str, token: str = Depends(verify_token)):
-    datasetId = "1644ad24-cad9-4ca5-8840-74ceeb311cd6"
+    """Returns a dicom file from the datawarehouse."""
     file_name = file_name + ".dcm"
 
     response = requests.get(
-        f"https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets/{datasetId}/files/{file_name}",
-        cookies={"Philips.CFI.AccessToken": token}
+        f"{dwhUrl}/api/datasets/{datasetId}/files/{file_name}",
+        cookies={"Philips.CFI.AccessToken": token},
     )
 
     if response.ok:
@@ -124,10 +141,13 @@ async def get_dicom(file_name: str, token: str = Depends(verify_token)):
 
 @app.get("/annotations")
 def get_all_annotations(token: str = Depends(verify_token)):
-    if os.path.exists("annotations.json"):
-        with open("annotations.json", "r") as f:
-            annotations = json.load(f)
+    """Returns a list of annotations."""
+    response = supabase.table("annotations").select("*").execute()
+
+    if response.data:
+        annotations = response.data
         return {"annotations": annotations}
+
     return {"annotations": []}
 
 
@@ -139,11 +159,11 @@ def get_annotations_by_filename(file_name: str, token: str = Depends(verify_toke
             annotations = json.load(f)
         return {"annotations": annotations.get(file_name, [])}
     return {"annotations": []}
-   
+
 
 @app.post("/annotations/{selected_file}")
 def save_annotation(selected_file: str, data: dict, token: str = Depends(verify_token)):
-    """Save annotation for a DICOM file."""
+    """Save an annotation for a DICOM file."""
     angle = data.get("angle")
     note = data.get("note")
 
