@@ -34,7 +34,7 @@ const RootComponent = () => {
   // Verify if token is already set
   const verifyAuthentication = async () => {
     try {
-      await axios.get(`${API_BASE_URL}/dicom-files`, {
+      await axios.get(`${API_BASE_URL}/auth/verify`, {
         withCredentials: true, // Send cookies
       });
       setIsAuthenticated(true);

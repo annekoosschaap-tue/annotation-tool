@@ -15,9 +15,9 @@ import vtkInteractorStyleTrackballCamera from '@kitware/vtk.js/Interaction/Style
 import vtkVolumeController from './VolumeController';
 import { API_BASE_URL } from "./../config";
 
-async function fetchData(fileName) {
+async function fetchData(patientId) {
   try {
-    const response = await axios.get(`${API_BASE_URL}/dicom-files/${fileName}`, {
+    const response = await axios.get(`${API_BASE_URL}/dicom-files/${patientId}`, {
       responseType: 'arraybuffer',
       withCredentials: true,
       headers: {
@@ -172,7 +172,7 @@ function computeRAOAndCRAN(viewDirection) {
 }
 
 
-function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation, resetTrigger }) {
+function VTKVisualizer({ patientId, onViewDataChange, selectedAnnotation, resetTrigger }) {
   const vtkContainerRef = useRef(null);
   const controllerContainerRef = useRef(null);
   const context = useRef(null);
@@ -192,14 +192,14 @@ function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation, resetTr
     });
 
     const fetchAndRenderData = async () => {
-      const dicomData = await fetchData(fileName);
+      const dicomData = await fetchData(patientId);
       if (dicomData) {
         const parsedData = parseDicom(dicomData); 
         setParsedData(parsedData); 
       }
     };
     fetchAndRenderData();
-  }, [fileName]);
+  }, [patientId]);
 
   useEffect(() => {
     if (!context.current && vtkContainerRef.current) {

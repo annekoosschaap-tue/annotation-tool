@@ -6,8 +6,8 @@ import { AnnotationPanel } from './components/AnnotationPanel';
 import { API_BASE_URL } from "./config";
 
 function App() {
-  const [dicomFiles, setDicomFiles] = useState([]);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [patients, setPatients] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(null);
   const [annotationsMap, setAnnotationsMap] = useState({});
   const [viewData, setViewData] = useState({
     viewVector: [0, 0, 0],
@@ -17,11 +17,11 @@ function App() {
   const [selectedAnnotation, setSelectedAnnotation] = useState(null);
   const [resetTrigger, setResetTrigger] = useState(false);
 
-  // Load DICOM files
+  // Load patients
   useEffect(() => {
-    axios.get(`${API_BASE_URL}/dicom-files`, { withCredentials: true })
-      .then(res => setDicomFiles(res.data.files))
-      .catch(err => console.error("Failed to fetch DICOM files", err));
+    axios.get(`${API_BASE_URL}/patients`, { withCredentials: true })
+      .then(res => setPatients(res.data.patient_ids))
+      .catch(err => console.error("Failed to fetch patient IDs", err));
   }, []);
 
   // Load annotations for each patient
@@ -32,11 +32,11 @@ function App() {
       const counts = {};
 
       for (const annotation of annotationsList) {
-        const fileName = annotation.patient_id;
-        if (counts[fileName]) {
-          counts[fileName] += 1;
+        const patientId = annotation.patient_id;
+        if (counts[patientId]) {
+          counts[patientId] += 1;
         } else {
-          counts[fileName] = 1;
+          counts[patientId] = 1;
         }
       }
 
@@ -48,8 +48,8 @@ function App() {
     });
 }, []);
 
-  const handleFileSelection = (fileName) => {
-    setSelectedFile(fileName);
+  const handlePatientSelection = (patientId) => {
+    setSelectedPatient(patientId);
   };
 
   const handleResetView = () => {
@@ -59,15 +59,15 @@ function App() {
   const updateAnnotationsCount = () => {
     axios.get(`${API_BASE_URL}/annotations`, { withCredentials: true })
       .then(res => {
-        const annotationsObj = res.data.annotations;
+        const annotations  = res.data.annotations;
+
         const counts = {};
 
-        for (const fileName in annotationsObj) {
-          if (annotationsObj.hasOwnProperty(fileName)) {
-            counts[fileName] = annotationsObj[fileName].length;
-          }
-        }
-
+        annotations.forEach(annotation => {
+          const patientId = annotation.patient_id;
+          counts[patientId] = (counts[patientId] || 0) + 1;
+        });
+  
         setAnnotationsMap(counts);
       })
       .catch(err => console.error("Failed to fetch annotations", err));
@@ -75,18 +75,18 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Left panel: DICOM list with annotation check */}
-      <div className="file-list" style={{ width: '20%', padding: '10px', overflowY: 'auto', borderRight: '1px solid #ccc' }}>
-        <h3>Patient files</h3>
+      {/* Left panel: Patient list with annotation number */}
+      <div className="patient-list" style={{ width: '20%', padding: '10px', overflowY: 'auto', borderRight: '1px solid #ccc' }}>
+        <h3>Patients</h3>
         <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
-          {dicomFiles.map(file => (
+          {patients.map(patient => (
             <li
-              key={file}
-              onClick={() => handleFileSelection(selectedFile === file ? null : file)}
+              key={patient}
+              onClick={() => handlePatientSelection(selectedPatient === patient ? null : patient)}
               style={{
                 cursor: 'pointer',
                 padding: '6px 8px',
-                backgroundColor: selectedFile === file ? '#ffe0b2' : '#fff',
+                backgroundColor: selectedPatient === patient ? '#ffe0b2' : '#fff',
                 borderRadius: '4px',
                 marginBottom: '5px',
                 display: 'flex',
@@ -95,9 +95,9 @@ function App() {
                 border: '1px solid #ddd'
               }}
             >
-              <span>{file}</span>
-              <span style={{ fontSize: '0.8rem', color: annotationsMap[file] ? 'green' : '#aaa' }}>
-                {annotationsMap[file] ? `${annotationsMap[file]}` : '0'}
+              <span>{patient}</span>
+              <span style={{ fontSize: '0.8rem', color: annotationsMap[patient] ? 'green' : '#aaa' }}>
+                {annotationsMap[patient] ? `${annotationsMap[patient]}` : '0'}
               </span>
             </li>
           ))}
@@ -106,19 +106,19 @@ function App() {
 
       {/* Middle panel: 3D visualizer */}
       <div className="visualizer-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px', height: '100vh' }}>
-        {selectedFile && <VTKVisualizer 
-          fileName={selectedFile} 
+        {selectedPatient && <VTKVisualizer 
+          patientId={selectedPatient} 
           onViewDataChange={setViewData} 
           selectedAnnotation={selectedAnnotation}
           resetTrigger={resetTrigger}
         />}
       </div>
 
-      {/* Right panel: annotation panel */}
+      {/* Right panel: Annotation panel */}
       <div className="annotation-panel" style={{ width: '20%', padding: '10px', overflowY: 'auto', borderLeft: '1px solid #ccc' }}>
         <h3>Annotations</h3>
-        {selectedFile && <AnnotationPanel 
-          fileName={selectedFile} 
+        {selectedPatient && <AnnotationPanel 
+          patientId={selectedPatient} 
           viewData={viewData} 
           updateAnnotationsCount={updateAnnotationsCount} 
           onAnnotationSelect={setSelectedAnnotation}
