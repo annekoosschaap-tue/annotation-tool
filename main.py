@@ -201,6 +201,7 @@ def get_annotations_by_patient_id(patient_id: str, user_data: str = Depends(veri
         supabase.table("annotations")
         .select("*, patient:patient_id(id)")
         .eq("user_sub", sub)
+        .eq("patient_id", patient_id)
         .execute()
     )
     
