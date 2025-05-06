@@ -2,17 +2,20 @@ from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from io import BytesIO
+from dotenv import load_dotenv
 from pydicom.filebase import DicomBytesIO
+from supabase import create_client
 from typing import Any, Dict
+from uuid import UUID
 import os
 import json
 import pydicom
 import requests
 import uvicorn
 
+# Set up middleware for the API endpoints
 app = FastAPI()
 
-# Allow frontend to communicate with FastAPI
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "https://annekoosschaap-tue.github.io"],
@@ -21,42 +24,73 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DICOM_DIR = r"C:\Users\s149220\Documents\PhD\PhD\Datasets\Aneurisk_dicoms"
+# Set up connection to Supabase database
+load_dotenv()
 
-datasetId = "1644ad24-cad9-4ca5-8840-74ceeb311cd6"
+supabase_url = os.getenv("EXPO_PUBLIC_SUPABASE_URL")
+supabase_key = os.getenv("EXPO_PUBLIC_SUPABASE_ANON_KEY")
 
-async def verify_token(request: Request):
+supabase = create_client(supabase_url, supabase_key)
+
+# Load default value
+datasetId = os.getenv("DATASET_ID")
+dwhUrl = os.getenv("DATAWAREHOUSE_URL")
+cfiUrl = os.getenv("CFILAB_URL")
+
+
+async def verify_user(request: Request):
+    """Check whether the provided token is a valid token."""
     token = request.cookies.get("Philips.CFI.AccessToken")
-    response = requests.get(
-        "https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets",
-        cookies={"Philips.CFI.AccessToken": token}
-    )
-    if not token or not response.ok: 
-        raise HTTPException(status_code=401, detail="Invalid or missing token")
-    return token
 
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing token")
 
-# Function to load DICOM data
-def load_dicom(file_path):
+    response = requests.get(f"{cfiUrl}/usr", cookies={"Philips.CFI.AccessToken": token})
+
     try:
-        dicom_data = pydicom.dcmread(file_path)
-        return dicom_data
+        user_data = response.json()
+        sub = user_data.get("sub")
+        email = user_data.get("email")
+
+        user_data = [{"sub": sub, "email": email}]
+
+        response = supabase.table("users").upsert(user_data).execute()
+
     except Exception as e:
-        raise HTTPException(status_code=404, detail="DICOM file not found")
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    return {"token": token, "sub": sub}
 
 
 @app.post("/set-token")
 async def set_token(request: Request, response: Response):
-    """Receive a token from the frontend and store it in cookies."""
+    """Receive a token from the frontend, verify it, and store it in cookies."""
     try:
-        body = await request.json()  # Read JSON body from request
+        body = await request.json()
         token = body.get("token")
+
         if not token:
             raise HTTPException(status_code=400, detail="Token is required")
+
+        verify_response = requests.get(
+            f"{cfiUrl}/usr", cookies={"Philips.CFI.AccessToken": token}
+        )
+
+        user_data = verify_response.json()
+        if not user_data:
+            raise HTTPException(status_code=401, detail="Invalid token provided")
 
         response.set_cookie(
             key="Philips.CFI.AccessToken",
             value=token,
+            httponly=True,
+            samesite="None",
+            secure=True,
+        )
+
+        response.set_cookie(
+            key="sub",
+            value=user_data.get("sub"),
             httponly=True,
             samesite="None",
             secure=True,
@@ -67,20 +101,41 @@ async def set_token(request: Request, response: Response):
         raise HTTPException(status_code=500, detail=f"Error setting token: {str(e)}")
 
 
+@app.get("/auth/verify")
+def verify_auth_status(user_data: str = Depends(verify_user)):
+    """Lightweight endpoint to verify authentication."""
+    return {"message": "Token is valid"}
+
+
+@app.get("/patients")
+def get_patient_ids(user_data: str = Depends(verify_user)):
+    """Return a list of patient IDs."""
+    response = supabase.table("patients").select("id").execute()
+
+    if response.data:
+        patient_ids = [item["id"] for item in response.data]
+        return {"patient_ids": patient_ids}
+
+    return {"patient_ids": []}
+
+
 @app.get("/dicom-files")
-def get_dicom_files(token: str = Depends(verify_token)):
+def get_dicom_files(user_data: str = Depends(verify_user)):
     """Return a list of available DICOM files."""
-    datasetId = "1644ad24-cad9-4ca5-8840-74ceeb311cd6"
     response = requests.get(
-        f"https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets/{datasetId}/files",
-        cookies={"Philips.CFI.AccessToken": token}
+        f"{dwhUrl}/api/datasets/{datasetId}/files",
+        cookies={"Philips.CFI.AccessToken": user_data.get("token")},
     )
 
     if response.ok:
         try:
             data = response.json()
             contents = data.get("Contents")
-            patient_ids = [os.path.splitext(item['Key'])[0] for item in contents if item.get('Key') and item['Key'].endswith('.dcm')]
+            dcm_files = [
+                item["Key"]
+                for item in contents
+                if item.get("Key") and item["Key"].endswith(".dcm")
+            ]
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error reading patient list: {str(e)}"
@@ -89,18 +144,23 @@ def get_dicom_files(token: str = Depends(verify_token)):
         raise HTTPException(
             status_code=500, detail=f"Error in the request to dwh: {response}"
         )
-    files = {"files": patient_ids}
+    files = {"files": dcm_files}
     return files
 
 
-@app.get("/dicom-files/{file_name}")
-async def get_dicom(file_name: str, token: str = Depends(verify_token)):
-    datasetId = "1644ad24-cad9-4ca5-8840-74ceeb311cd6"
-    file_name = file_name + ".dcm"
+@app.get("/dicom-files/{patient_id}")
+async def get_dicom(patient_id: str, user_data: str = Depends(verify_user)):
+    """Returns a dicom file from the datawarehouse."""
+    response = supabase.table("patients").select("*").eq("id", patient_id).execute()
+
+    if len(response.data) == 0:
+        raise HTTPException(status_code=400, detail=f"File not found")
+
+    file_name = response.data[0].get("file_name")
 
     response = requests.get(
-        f"https://datawarehouse.cfilab.philips.com/datawarehouse/api/datasets/{datasetId}/files/{file_name}",
-        cookies={"Philips.CFI.AccessToken": token}
+        f"{dwhUrl}/api/datasets/{datasetId}/files/{file_name}",
+        cookies={"Philips.CFI.AccessToken": user_data.get("token")},
     )
 
     if response.ok:
@@ -112,7 +172,6 @@ async def get_dicom(file_name: str, token: str = Depends(verify_token)):
                 dicom_bytes.seek(0)
             return Response(content=dicom_bytes.read(), media_type="application/dicom")
         except Exception as e:
-            print(e)
             raise HTTPException(
                 status_code=500, detail=f"Error reading DICOM file: {str(e)}"
             )
@@ -123,53 +182,76 @@ async def get_dicom(file_name: str, token: str = Depends(verify_token)):
 
 
 @app.get("/annotations")
-def get_all_annotations(token: str = Depends(verify_token)):
-    if os.path.exists("annotations.json"):
-        with open("annotations.json", "r") as f:
-            annotations = json.load(f)
+def get_all_annotations(user_data: str = Depends(verify_user)):
+    """Returns a list of the user's annotations."""
+    sub = user_data.get("sub")
+    response = supabase.table("annotations").select("*").eq("user_sub", sub).execute()
+
+    if response.data:
+        annotations = response.data
         return {"annotations": annotations}
+
     return {"annotations": []}
 
 
-@app.get("/annotations/{file_name}")
-def get_annotations_by_filename(file_name: str, token: str = Depends(verify_token)):
-    """Retrieve annotations for a specific DICOM file."""
-    if os.path.exists("annotations.json"):
-        with open("annotations.json", "r") as f:
-            annotations = json.load(f)
-        return {"annotations": annotations.get(file_name, [])}
+@app.get("/annotations/{patient_id}")
+def get_annotations_by_patient_id(patient_id: str, user_data: str = Depends(verify_user)):
+    """Retrieve user's annotations for a specific patient."""
+    sub = user_data.get("sub")
+    response = (
+        supabase.table("annotations")
+        .select("*, patient:patient_id(id)")
+        .eq("user_sub", sub)
+        .execute()
+    )
+    
+    if response.data:
+        annotations = response.data
+        return {"annotations": annotations}
+    
     return {"annotations": []}
-   
 
-@app.post("/annotations/{selected_file}")
-def save_annotation(selected_file: str, data: dict, token: str = Depends(verify_token)):
-    """Save annotation for a DICOM file."""
-    angle = data.get("angle")
+
+@app.post("/annotations/{patient_id}")
+def save_annotation(
+    patient_id: str,
+    data: dict,
+    request: Request,
+    user_data: str = Depends(verify_user),
+):
+    """Save an annotation for a patient."""
+    sub = user_data.get("sub")
+    rao = data.get("rao")
+    cran = data.get("cran")
+    view_vector = data.get("viewVector")
     note = data.get("note")
 
-    if not selected_file:
+    if not (rao and cran and view_vector):
+        raise HTTPException(
+            status_code=400, detail="Missing working projection in request body"
+        )
+
+    if not patient_id:
         raise HTTPException(status_code=400, detail="Missing file name")
 
-    if angle is None:
-        raise HTTPException(status_code=400, detail="Missing angle in request body")
-
-    annotations = {}
-    if os.path.exists("annotations.json"):
-        with open("annotations.json", "r") as f:
-            try:
-                annotations = json.load(f)
-            except json.JSONDecodeError:
-                raise HTTPException(
-                    status_code=500, detail="Failed to parse annotations.json"
-                )
-
-    if selected_file not in annotations:
-        annotations[selected_file] = []
-    annotations[selected_file].append({"angle": angle, "note": note})
+    patient_data = (
+        supabase.table("patients").select("id").eq("id", patient_id).execute()
+    )
+    if not patient_data.data:
+        raise HTTPException(status_code=404, detail="Patient not found for this file")
+    patient_id = patient_data.data[0]["id"]
 
     try:
-        with open("annotations.json", "w") as f:
-            json.dump(annotations, f, indent=2)
+        annotation_data = {
+            "patient_id": patient_id,
+            "user_sub": sub,
+            "rao": rao,
+            "cran": cran,
+            "view_vector": view_vector,
+            "note": note,
+        }
+        _ = supabase.table("annotations").insert(annotation_data).execute()
+
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to save annotation: {str(e)}"
@@ -178,97 +260,74 @@ def save_annotation(selected_file: str, data: dict, token: str = Depends(verify_
     return {"message": "Annotation saved successfully"}
 
 
-@app.put("/annotations/{selected_file}/{selected_annotation}")
+@app.put("/annotations/{annotation_id}")
 def update_annotation(
-    selected_file: str,
-    selected_annotation: int,
+    annotation_id: UUID,
     data: Dict[str, Any] = Body(...),
-    token: str = Depends(verify_token),
+    user_data: str = Depends(verify_user),
 ):
-    """Update a specific annotation for a DICOM file."""
-    angle = data.get("angle")
+    """Update a specific annotation for a patient."""
+    print(data)
+    rao = data.get("rao")
+    cran = data.get("cran")
+    view_vector = data.get("viewVector")
     note = data.get("note")
 
-    if not selected_file:
-        raise HTTPException(status_code=400, detail="Missing file name")
-
-    if angle is None:
-        raise HTTPException(status_code=400, detail="Missing angle in request body")
-
-    annotations = {}
-    if os.path.exists("annotations.json"):
-        with open("annotations.json", "r") as f:
-            try:
-                annotations = json.load(f)
-            except json.JSONDecodeError:
-                raise HTTPException(
-                    status_code=500, detail="Failed to parse annotations.json"
-                )
-
-    if selected_file not in annotations:
+    if not (rao and cran and view_vector):
         raise HTTPException(
-            status_code=404, detail="Selected file not found in annotations"
+            status_code=400, detail="Missing working projection in request body"
         )
 
-    file_annotations = annotations[selected_file]
+    response = (
+        supabase.table("annotations")
+        .select("*")
+        .eq("id", annotation_id)
+        .execute()
+    )
 
-    if not isinstance(file_annotations, list) or selected_annotation >= len(
-        file_annotations
-    ):
-        raise HTTPException(
-            status_code=404, detail="Selected annotation index out of range"
-        )
-
-    annotations[selected_file][selected_annotation] = {
-        "angle": angle,
-        "note": note,
-    }
-
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Annotation not found")
+    
     try:
-        with open("annotations.json", "w") as f:
-            json.dump(annotations, f, indent=2)
+        update_data = {
+            "patient_id": response.data[0].get("patient_id"),
+            "id": response.data[0].get("id"),
+            "rao": rao,
+            "cran": cran,
+            "view_vector": view_vector,
+            "note": note,
+            "user_sub": response.data[0].get("user_sub")
+        }
+
+        _ = (
+            supabase.table("annotations")
+            .update(update_data)
+            .eq("id", annotation_id)
+            .execute()
+        )
+
     except Exception as e:
+        print(e)
         raise HTTPException(
-            status_code=500, detail=f"Failed to save annotation: {str(e)}"
+            status_code=500, detail=f"Failed to update annotation: {str(e)}"
         )
 
     return {"message": "Annotation updated successfully"}
 
 
-@app.delete("/annotations/{file_name}/{annotation_index}")
+@app.delete("/annotations/{annotation_id}")
 def delete_annotation(
-    file_name: str, annotation_index: int, token: str = Depends(verify_token)
+    annotation_id: UUID, user_data: str = Depends(verify_user)
 ):
-    """Delete a specific annotation for a DICOM file."""
-    if not os.path.exists("annotations.json"):
-        raise HTTPException(status_code=404, detail="No annotations found")
+    """Delete a specific annotation by UUID."""
+    response = supabase \
+        .table("annotations") \
+        .delete() \
+        .eq("id", annotation_id) \
+        .execute()
 
-    try:
-        with open("annotations.json", "r") as f:
-            annotations = json.load(f)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to parse annotations.json")
-
-    if file_name not in annotations:
-        raise HTTPException(status_code=404, detail="File not found in annotations")
-
-    if annotation_index < 0 or annotation_index >= len(annotations[file_name]):
-        raise HTTPException(status_code=404, detail="Annotation index out of range")
-
-    # Remove the annotation
-    del annotations[file_name][annotation_index]
-
-    # If the list is now empty, optionally remove the file key entirely
-    if not annotations[file_name]:
-        del annotations[file_name]
-
-    try:
-        with open("annotations.json", "w") as f:
-            json.dump(annotations, f, indent=2)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to update annotations.json: {str(e)}"
-        )
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Annotation not found")
 
     return {"message": "Annotation deleted successfully"}
 

@@ -2,20 +2,19 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_BASE_URL } from "./../config";
 
-export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount, onAnnotationSelect, onResetView }) => {
+export const AnnotationPanel = ({ patientId, viewData, updateAnnotationsCount, onAnnotationSelect, onResetView }) => {
   const [annotations, setAnnotations] = useState([]);
-  const [selectedIndex, setSelectedIndex] = useState(null);
-  const [newNote, setNewNote] = useState('');
-  const [selectedNote, setSelectedNote] = useState('');
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState(null);
+  const [noteInput, setNoteInput] = useState('');
 
   const fetchAnnotations = () => {
-    if (!fileName) return;
-    axios.get(`${API_BASE_URL}/annotations/${fileName}`, {
+    if (!patientId) return;
+    axios.get(`${API_BASE_URL}/annotations/${patientId}`, {
       withCredentials: true,
     })
       .then((response) => {
         setAnnotations(response.data.annotations || []);
-        setSelectedIndex(null);
+        setSelectedAnnotationId(null);
       })
       .catch((error) => {
         console.error("Failed to load annotations", error);
@@ -24,10 +23,10 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount, on
 
   useEffect(() => {
     fetchAnnotations();
-  }, [fileName]);
+  }, [patientId]);
 
-  const handleDelete = (indexToDelete) => {
-    axios.delete(`${API_BASE_URL}/annotations/${fileName}/${indexToDelete}`, {
+  const handleDelete = (annotationId) => {
+    axios.delete(`${API_BASE_URL}/annotations/${annotationId}`, {
       withCredentials: true,
     })
       .then(() => {
@@ -40,19 +39,18 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount, on
   };
 
   const handleUpdate = () => {
-    if (selectedIndex === null) return;
-
-    axios.put(`${API_BASE_URL}/annotations/${fileName}/${selectedIndex}`, {
-      angle: {
-        rao: viewData.rao,
-        cran: viewData.cran,
-        viewVector: viewData.viewVector
-      },
-      note: selectedNote,
+    if (!selectedAnnotationId) return;
+    axios.put(`${API_BASE_URL}/annotations/${selectedAnnotationId}`, {
+      rao: viewData.rao,
+      cran: viewData.cran,
+      viewVector: viewData.viewVector,
+      note: noteInput,
     }, {
       withCredentials: true,
     })
       .then(() => {
+        setNoteInput('');
+        setSelectedAnnotationId(null);
         fetchAnnotations();
         updateAnnotationsCount();
       })
@@ -61,18 +59,16 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount, on
 
   const handleSaveNew = () => {
     const newAnnotation = {
-      angle: {
-        rao: viewData.rao,
-        cran: viewData.cran,
-        viewVector: viewData.viewVector
-      },
-      note: newNote
+      rao: viewData.rao,
+      cran: viewData.cran,
+      viewVector: viewData.viewVector,
+      note: noteInput
     };
-    axios.post(`${API_BASE_URL}/annotations/${fileName}`, newAnnotation, {
+    axios.post(`${API_BASE_URL}/annotations/${patientId}`, newAnnotation, {
       withCredentials: true,
     })
       .then(() => {
-        setNewNote('');
+        setNoteInput('');
         fetchAnnotations();
         updateAnnotationsCount();
       })
@@ -91,14 +87,8 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount, on
       <p>CRAN: {viewData.cran}°</p>
 
       <textarea
-        value={selectedIndex !== null ? selectedNote : newNote}
-        onChange={(e) => {
-          if (selectedIndex !== null) {
-            setSelectedNote(e.target.value);
-          } else {
-            setNewNote(e.target.value);
-          }
-        }}
+        value={noteInput}
+        onChange={(e) => setNoteInput(e.target.value)}
         placeholder="Add a note..."
         style={{ width: '100%', minHeight: '80px', marginTop: '10px' }}
       />
@@ -106,15 +96,15 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount, on
       <div style={{ marginTop: '10px' }}>
         <button
           onClick={handleUpdate}
-          disabled={selectedIndex === null}
+          disabled={selectedAnnotationId === null}
           style={{
             marginRight: '10px',
-            backgroundColor: selectedIndex === null ? '#ccc' : '#007bff',
+            backgroundColor: selectedAnnotationId === null ? '#ccc' : '#007bff',
             color: 'white',
             padding: '8px 12px',
             border: 'none',
             borderRadius: '4px',
-            cursor: selectedIndex === null ? 'default' : 'pointer'
+            cursor: selectedAnnotationId === null ? 'default' : 'pointer'
           }}
         >
           Update annotation
@@ -156,19 +146,23 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount, on
       {annotations.length === 0 && <p>No saved annotations.</p>}
 
       <ul style={{ listStyle: 'none', padding: 0 }}>
-        {annotations.map((ann, idx) => (
+        {annotations.map((ann) => (
           <li
-            key={idx}
+            key={ann.id}
             onClick={() => {
-              if (selectedIndex === idx) {
-                setSelectedIndex(null);
-                setSelectedNote('');
+              if (selectedAnnotationId === ann.id) {
+                setSelectedAnnotationId(null);
+                setNoteInput('');
                 onAnnotationSelect(null);
               } else {
-                const selectedAnnotation = annotations[idx];
-                setSelectedIndex(idx);
-                setSelectedNote(selectedAnnotation.note);
-                onAnnotationSelect(selectedAnnotation.angle);
+                const selectedAnnotation = ann;
+                setSelectedAnnotationId(ann.id);
+                setNoteInput(ann.note || '');
+                onAnnotationSelect({
+                  rao: selectedAnnotation.rao,
+                  cran: selectedAnnotation.cran,
+                  viewVector: selectedAnnotation.view_vector
+                });
               }
             }}            
             style={{
@@ -178,7 +172,7 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount, on
               borderRadius: '6px',
               padding: '10px 30px 10px 10px',
               marginBottom: '8px',
-              backgroundColor: selectedIndex === idx ? '#e0f7fa' : '#fff',
+              backgroundColor: selectedAnnotationId === ann.id ? '#e0f7fa' : '#fff',
               transition: 'background-color 0.2s',
             }}
           >
@@ -194,13 +188,13 @@ export const AnnotationPanel = ({ fileName, viewData, updateAnnotationsCount, on
             }}
               onClick={(e) => {
                 e.stopPropagation();
-                handleDelete(idx);
+                handleDelete(ann.id);
               }}
               title="Delete"
             >
               &times;
             </div>
-            <div><strong>RAO:</strong> {ann.angle?.rao ?? '—'}°, <strong>CRAN:</strong> {ann.angle?.cran ?? '—'}°</div>
+            <div><strong>RAO:</strong> {ann.rao ?? '—'}°, <strong>CRAN:</strong> {ann.cran ?? '—'}°</div>
             <div><strong>Note:</strong> {ann.note || '—'}</div>
           </li>
         ))}

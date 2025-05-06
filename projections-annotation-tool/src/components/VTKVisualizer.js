@@ -15,9 +15,9 @@ import vtkInteractorStyleTrackballCamera from '@kitware/vtk.js/Interaction/Style
 import vtkVolumeController from './VolumeController';
 import { API_BASE_URL } from "./../config";
 
-async function fetchData(fileName) {
+async function fetchData(patientId) {
   try {
-    const response = await axios.get(`${API_BASE_URL}/dicom-files/${fileName}`, {
+    const response = await axios.get(`${API_BASE_URL}/dicom-files/${patientId}`, {
       responseType: 'arraybuffer',
       withCredentials: true,
       headers: {
@@ -134,7 +134,6 @@ function getCameraViewAngles(renderer) {
   const position = camera.getPosition();
   const focalPoint = camera.getFocalPoint();
   const viewUp = camera.getViewUp();
-  console.log(`viewUp`, viewUp)
 
   // Calculate view direction vector
   const viewDirection = [
@@ -143,12 +142,8 @@ function getCameraViewAngles(renderer) {
     focalPoint[2] - position[2],
   ];
 
-  console.log(`viewDirection`, viewDirection)
-
   const norm = Math.sqrt(viewDirection.reduce((sum, val) => sum + val * val, 0));
-  console.log(`norm`, norm)
   const normalizedDirection = viewDirection.map(val => val / norm);
-  console.log(`normalizedDirection`, normalizedDirection)
 
   return {
     position,
@@ -172,7 +167,7 @@ function computeRAOAndCRAN(viewDirection) {
 }
 
 
-function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation, resetTrigger }) {
+function VTKVisualizer({ patientId, onViewDataChange, selectedAnnotation, resetTrigger }) {
   const vtkContainerRef = useRef(null);
   const controllerContainerRef = useRef(null);
   const context = useRef(null);
@@ -192,14 +187,14 @@ function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation, resetTr
     });
 
     const fetchAndRenderData = async () => {
-      const dicomData = await fetchData(fileName);
+      const dicomData = await fetchData(patientId);
       if (dicomData) {
         const parsedData = parseDicom(dicomData); 
         setParsedData(parsedData); 
       }
     };
     fetchAndRenderData();
-  }, [fileName]);
+  }, [patientId]);
 
   useEffect(() => {
     if (!context.current && vtkContainerRef.current) {
@@ -346,22 +341,16 @@ function VTKVisualizer({ fileName, onViewDataChange, selectedAnnotation, resetTr
   
       // Assume focal point is always [0, 0, 0]
       const focalPoint = [0, 0, 0];
-      const distance = 500; // distance from focal point — you can tune this
-  
-      const cameraPosition = [
-        focalPoint[0] - viewVector[0] * distance,
-        focalPoint[1] - viewVector[1] * distance,
-        focalPoint[2] - viewVector[2] * distance,
-      ];
 
-      console.log(`cameraPosition`, cameraPosition)
-      console.log(`current position`, camera.getPosition())
+      const cameraPosition = [
+        focalPoint[0] - viewVector[0],
+        focalPoint[1] - viewVector[1],
+        focalPoint[2] - viewVector[2],
+      ];
   
       camera.setPosition(...cameraPosition);
-      console.log(`new position`, camera.getPosition())
       camera.setFocalPoint(...focalPoint);
-      camera.setViewUp(0, 1, 0); // could be improved if you want precise control
-      console.log(`final position`, camera.getPosition())
+      camera.setViewUp(0, -1, 0);
       camera.modified();
   
       renderer.resetCamera();
