@@ -49,6 +49,7 @@ pydantic_core==2.27.2
 pydicom==3.0.1
 pyparsing==3.2.1
 python-dateutil==2.9.0.post0
+python-dotenv           1.1.0
 pytz==2025.1
 pyvista==0.44.2
 pyviz_comms==3.0.4

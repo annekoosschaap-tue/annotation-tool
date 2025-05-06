@@ -8,7 +8,6 @@ from supabase import create_client
 from typing import Any, Dict
 from uuid import UUID
 import os
-import json
 import pydicom
 import requests
 import uvicorn
