@@ -5,8 +5,7 @@ import { API_BASE_URL } from "./../config";
 export const AnnotationPanel = ({ patientId, viewData, updateAnnotationsCount, onAnnotationSelect, onResetView }) => {
   const [annotations, setAnnotations] = useState([]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState(null);
-  const [newNote, setNewNote] = useState('');
-  const [selectedNote, setSelectedNote] = useState('');
+  const [noteInput, setNoteInput] = useState('');
 
   const fetchAnnotations = () => {
     if (!patientId) return;
@@ -14,7 +13,6 @@ export const AnnotationPanel = ({ patientId, viewData, updateAnnotationsCount, o
       withCredentials: true,
     })
       .then((response) => {
-        console.log(response.data.annotations)
         setAnnotations(response.data.annotations || []);
         setSelectedAnnotationId(null);
       })
@@ -42,16 +40,17 @@ export const AnnotationPanel = ({ patientId, viewData, updateAnnotationsCount, o
 
   const handleUpdate = () => {
     if (!selectedAnnotationId) return;
-
     axios.put(`${API_BASE_URL}/annotations/${selectedAnnotationId}`, {
       rao: viewData.rao,
       cran: viewData.cran,
       viewVector: viewData.viewVector,
-      note: selectedNote,
+      note: noteInput,
     }, {
       withCredentials: true,
     })
       .then(() => {
+        setNoteInput('');
+        setSelectedAnnotationId(null);
         fetchAnnotations();
         updateAnnotationsCount();
       })
@@ -63,13 +62,13 @@ export const AnnotationPanel = ({ patientId, viewData, updateAnnotationsCount, o
       rao: viewData.rao,
       cran: viewData.cran,
       viewVector: viewData.viewVector,
-      note: newNote
+      note: noteInput
     };
     axios.post(`${API_BASE_URL}/annotations/${patientId}`, newAnnotation, {
       withCredentials: true,
     })
       .then(() => {
-        setNewNote('');
+        setNoteInput('');
         fetchAnnotations();
         updateAnnotationsCount();
       })
@@ -88,14 +87,8 @@ export const AnnotationPanel = ({ patientId, viewData, updateAnnotationsCount, o
       <p>CRAN: {viewData.cran}°</p>
 
       <textarea
-        value={selectedAnnotationId ? selectedNote : newNote}
-        onChange={(e) => {
-          if (selectedAnnotationId) {
-            setSelectedNote(e.target.value);
-          } else {
-            setNewNote(e.target.value);
-          }
-        }}
+        value={noteInput}
+        onChange={(e) => setNoteInput(e.target.value)}
         placeholder="Add a note..."
         style={{ width: '100%', minHeight: '80px', marginTop: '10px' }}
       />
@@ -159,12 +152,12 @@ export const AnnotationPanel = ({ patientId, viewData, updateAnnotationsCount, o
             onClick={() => {
               if (selectedAnnotationId === ann.id) {
                 setSelectedAnnotationId(null);
-                setSelectedNote('');
+                setNoteInput('');
                 onAnnotationSelect(null);
               } else {
                 const selectedAnnotation = ann;
                 setSelectedAnnotationId(ann.id);
-                setSelectedNote(selectedAnnotation.note);
+                setNoteInput(ann.note || '');
                 onAnnotationSelect({
                   rao: selectedAnnotation.rao,
                   cran: selectedAnnotation.cran,
